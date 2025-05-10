@@ -4,7 +4,10 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const passport = require('./passport'); // Import passport config
-const authRoutes = require('./authRoutes');
+const authRoutes = require('./auth/authRoutes');
+const pool = require('./db');
+const authMiddleware = require('./auth/authMiddleware');
+
 
 dotenv.config();
 const app = express();
@@ -41,10 +44,7 @@ app.get('/', (req, res) => {
 }
 
 // Dashboard routes
-app.get('/dashboard', (req, res) => {
-    if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Unauthorized" });
-    }
+app.get('/dashboard', authMiddleware, (req, res) => {
     res.json({ message: "Welcome to the dashboard", user: req.user });
 });
 

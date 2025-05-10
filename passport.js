@@ -12,25 +12,22 @@ passport.use(new GoogleStrategy({
 }, async (accessToken, refreshToken, profile, done) => {
     try {
         // Check if user already exists
-        const userExists = await pool.query('SELECT * FROM users WHERE email = $1', [profile.emails[0].value]);
+        const [userExists] = await pool.query('SELECT * FROM users WHERE email = ?', [profile.emails[0].value]);
 
-        if (userExists.rows.length > 0) {
-            if (!userExists.rows[0].password) {
-                // If user exists but has no password, force them to set one
-                return done(null, { ...userExists.rows[0], needsPassword: true });
-            }
-            return done(null, userExists.rows[0]);
+        if (userExists.length > 0) {
+            // If user exists, return the user
+            return done(null, userExists[0]);
         }
 
-        // If new user, create them with NULL password
+        // If new user, create them
         const newUserId = uuidv4();
-        const newUser = await pool.query(
-            'INSERT INTO users (user_id, email, password) VALUES ($1, $2, $3) RETURNING *',
-            [newUserId, profile.emails[0].value, null]
+        const [newUser] = await pool.query(
+            'INSERT INTO users (user_id, email) VALUES (?, ?)',
+            [newUserId, profile.emails[0].value, profile.displayName]
         );
 
-        // Return user data with "needsPassword" flag
-        return done(null, { ...newUser.rows[0], needsPassword: true });
+        // Return the new user
+        return done(null, { ...newUser, user_id: newUserId, email: profile.emails[0].value, username: profile.displayName });
 
     } catch (err) {
         console.error("OAuth Error:", err);
@@ -38,17 +35,15 @@ passport.use(new GoogleStrategy({
     }
 }));
 
-
-
 passport.serializeUser((user, done) => {
     done(null, user.user_id);
 });
 
 passport.deserializeUser(async (id, done) => {
     try {
-        const user = await pool.query("SELECT * FROM users WHERE user_id = $1", [id]);
-        if (user.rows.length === 0) return done(null, false);
-        done(null, user.rows[0]);
+        const [user] = await pool.query("SELECT * FROM users WHERE user_id = ?", [id]);
+        if (user.length === 0) return done(null, false);
+        done(null, user[0]);
     } catch (err) {
         done(err, null);
     }
