@@ -27,6 +27,7 @@ CREATE TABLE bills (
     group_id CHAR(36) NOT NULL,
     payed_by CHAR(36) NOT NULL,
     summarized BOOLEAN NOT NULL,
+    date_created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
     FOREIGN KEY (payed_by) REFERENCES users(user_id) ON DELETE CASCADE
 );

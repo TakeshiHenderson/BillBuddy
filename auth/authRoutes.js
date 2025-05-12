@@ -4,12 +4,15 @@ const authController = require('./authController');
 const authMiddleware = require('./authMiddleware');
 const passport = require('../passport');
 const jwt = require('jsonwebtoken');
+const pool = require('../db');
 
 router.post('/register', authController.register);
 router.post('/login', authController.login);
+
 router.get('/profile', authMiddleware, async (req, res) => {
     try {
-        const [user] = await pool.query('SELECT id, email FROM users WHERE id = ?', [req.user.id]);
+        // Use user_id from req.user, and select user_id and email from users table
+        const [user] = await pool.query('SELECT user_id, email FROM users WHERE user_id = ?', [req.user.user_id]);
         if (user.length === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
@@ -19,6 +22,7 @@ router.get('/profile', authMiddleware, async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
+
 router.post('/set-password', authController.setPassword);
 router.post('/request-password-reset', authController.requestPasswordReset);
 router.post('/reset-password', authController.resetPassword);
