@@ -8,24 +8,19 @@ const pool = require('../db');
 
 router.post('/register', authController.register);
 router.post('/login', authController.login);
+router.get('/profile', authMiddleware, authController.profile);
+router.put('/profile', authMiddleware, authController.updateProfile);
+// router.delete('/profile', authMiddleware, authController.deleteAccount);
 
-router.get('/profile', authMiddleware, async (req, res) => {
-    try {
-        // Use user_id from req.user, and select user_id and email from users table
-        const [user] = await pool.query('SELECT user_id, email FROM users WHERE user_id = ?', [req.user.user_id]);
-        if (user.length === 0) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-        res.json(user[0]);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
+// Password management routes
 router.post('/set-password', authController.setPassword);
 router.post('/request-password-reset', authController.requestPasswordReset);
 router.post('/reset-password', authController.resetPassword);
+
+// Group routes
+router.get('/groups', authMiddleware, authController.getUserGroups);
+router.post('/groups', authMiddleware, authController.createGroup);
+router.get('/groups/:groupId', authMiddleware, authController.getGroupById);
 
 // Google OAuth routes
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
@@ -34,10 +29,20 @@ router.get('/google/callback',
     passport.authenticate('google', { session: false }), 
     (req, res) => {
         // Generate JWT token for the user
-        const token = jwt.sign({ user_id: req.user.user_id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        // Redirect to frontend with the token
-        // res.redirect(`http://localhost:5000/auth-success?token=${token}`);
-        res.json({ token: token });
+        const token = jwt.sign({ 
+            user_id: req.user.user_id,
+            username: req.user.username,
+            email: req.user.email
+        }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        
+        res.json({ 
+            token,
+            user: {
+                id: req.user.user_id,
+                username: req.user.username,
+                email: req.user.email
+            }
+        });
     }
 );
 

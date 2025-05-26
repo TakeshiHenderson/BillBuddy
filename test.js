@@ -323,7 +323,7 @@ describe('BillBuddy API Tests', () => {
             // Verify records were inserted into database
             const [records] = await pool.query(
                 'SELECT r.*, u1.email as debtor_email, u2.email as debtee_email FROM record r ' +
-                'JOIN users u1 ON r.debtor = u1.user_id ' +
+                'JOIN users u1 ON r.debtor = u1.user_id ' + 
                 'JOIN users u2 ON r.debtee = u2.user_id ' +
                 'JOIN invoice i ON r.invoice_id = i.invoice_id ' +
                 'WHERE i.date_start = (SELECT MIN(date_created) FROM bills WHERE group_id = ?)',

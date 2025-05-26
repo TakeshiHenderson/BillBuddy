@@ -2,6 +2,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE users (
     user_id CHAR(36) NOT NULL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(50) NOT NULL UNIQUE,
     password VARCHAR(255), -- Allow NULL for OAuth users
     is_subscribed BOOLEAN NOT NULL DEFAULT FALSE,
