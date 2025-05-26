@@ -392,21 +392,73 @@ exports.getGroupById = async (req, res) => {
 
     try {
         // Query to get group details and check if the user is a member
-        const [group] = await pool.query(
+        const [groupRows] = await pool.query(
             'SELECT g.group_id, g.group_name FROM groups g JOIN user_groups ug ON g.group_id = ug.group_id WHERE g.group_id = ? AND ug.user_id = ?',
             [groupId, userId]
         );
 
-        if (group.length === 0) {
+        if (groupRows.length === 0) {
             return res.status(404).json({ message: 'Group not found or you are not a member' });
         }
 
-        // TODO: Fetch members and other details if needed
+        const group = groupRows[0];
 
-        res.json(group[0]);
+        // Fetch members of the group
+        const [memberRows] = await pool.query(
+            'SELECT u.user_id, u.username FROM users u JOIN user_groups ug ON u.user_id = ug.user_id WHERE ug.group_id = ?',
+            [groupId]
+        );
+
+        // Add members to the group object
+        group.members = memberRows.map(member => ({
+            id: member.user_id,
+            username: member.username
+        }));
+
+        res.json(group);
 
     } catch (err) {
         console.error('Error fetching group by ID:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+// New function for a user to join a group
+exports.joinGroup = async (req, res) => {
+    const { groupId } = req.params;
+    const userId = req.user.user_id; // Get user_id from the authenticated user
+
+    try {
+        // Check if the group exists
+        const [groupExists] = await pool.query(
+            'SELECT group_id FROM groups WHERE group_id = ?',
+            [groupId]
+        );
+
+        if (groupExists.length === 0) {
+            return res.status(404).json({ message: 'Group not found' });
+        }
+
+        // Check if the user is already a member of the group
+        const [isMember] = await pool.query(
+            'SELECT * FROM user_groups WHERE group_id = ? AND user_id = ?',
+            [groupId, userId]
+        );
+
+        if (isMember.length > 0) {
+            return res.status(400).json({ message: 'You are already a member of this group' });
+        }
+
+        // Add the user to the user_groups table
+        await pool.query(
+            'INSERT INTO user_groups (group_id, user_id) VALUES (?, ?)',
+            [groupId, userId]
+        );
+
+        res.status(200).json({ message: 'Successfully joined the group' });
+
+    } catch (err) {
+        console.error('Error joining group:', err);
         res.status(500).json({ message: 'Server error' });
     }
 };

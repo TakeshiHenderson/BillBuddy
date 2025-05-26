@@ -21,6 +21,7 @@ router.post('/reset-password', authController.resetPassword);
 router.get('/groups', authMiddleware, authController.getUserGroups);
 router.post('/groups', authMiddleware, authController.createGroup);
 router.get('/groups/:groupId', authMiddleware, authController.getGroupById);
+router.post('/groups/:groupId/join', authMiddleware, authController.joinGroup);
 
 // Google OAuth routes
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
