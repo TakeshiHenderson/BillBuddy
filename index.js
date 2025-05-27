@@ -12,6 +12,7 @@ const passport = require('./passport');
 const authRoutes = require('./auth/authRoutes');
 const authMiddleware = require('./auth/authMiddleware');
 const summarize = require('./summarize');
+const llmRoutes = require('./routes/llmRoutes');
 
 // =========================================
 // Environment Configuration
@@ -152,6 +153,9 @@ app.get('/dashboard',
         });
     }
 );
+
+// LLM Routes
+app.use('/api/llm', llmRoutes);
 
 // =========================================
 // Server Configuration

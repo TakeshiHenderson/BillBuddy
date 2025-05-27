@@ -104,6 +104,31 @@ describe('BillBuddy API Tests', () => {
             password: 'testPassword123'
         };
 
+        // Assuming a test user is registered and logged in before these tests
+        let authToken; // To store the token for authenticated requests
+        let testUserId; // To store the test user's ID
+
+        before(async () => {
+            // Ensure the test user exists and get their ID
+            const [users] = await pool.query('SELECT user_id FROM users WHERE email = ?', [testUser.email]);
+            if (users.length > 0) {
+                testUserId = users[0].user_id;
+            } else {
+                // If user doesn't exist, register them
+                await chai.request(app)
+                    .post('/auth/register')
+                    .send(testUser);
+                const [newUsers] = await pool.query('SELECT user_id FROM users WHERE email = ?', [testUser.email]);
+                testUserId = newUsers[0].user_id;
+            }
+
+            // Log in the test user to get a token
+            const res = await chai.request(app)
+                .post('/auth/login')
+                .send(testUser);
+            authToken = res.body.token;
+        });
+
         describe('POST /auth/register', () => {
             it('should register a new user successfully', async () => {
                 const res = await chai.request(app)
@@ -165,16 +190,6 @@ describe('BillBuddy API Tests', () => {
         });
 
         describe('GET /auth/profile', () => {
-            let authToken;
-
-            before(async () => {
-                // Login to get token
-                const res = await chai.request(app)
-                    .post('/auth/login')
-                    .send(testUser);
-                authToken = res.body.token;
-            });
-
             it('should get profile with valid token', async () => {
                 const res = await chai.request(app)
                     .get('/auth/profile')
@@ -189,6 +204,227 @@ describe('BillBuddy API Tests', () => {
                     .get('/auth/profile');
 
                 expect(res).to.have.status(401);
+            });
+        });
+
+        // New tests for Group Functionality
+        describe('Group Functionality', () => {
+            let testGroupId; // To store the ID of a created test group
+
+            // Clean up test groups and user_groups after these tests
+            after(async () => {
+                await pool.query('DELETE FROM user_groups WHERE user_id = ?', [testUserId]);
+                // Optional: Clean up groups created during tests if they are not linked to other users
+                // await pool.query('DELETE FROM groups WHERE group_id = ?', [testGroupId]);
+            });
+
+            // Ensure a group exists before running tests that require one
+            beforeEach(async () => {
+                // Create a test group if it doesn't exist
+                if (!testGroupId) {
+                    const groupName = 'Temporary Test Group';
+                    const res = await chai.request(app)
+                        .post('/auth/groups')
+                        .set('Authorization', `Bearer ${authToken}`)
+                        .send({ groupName });
+                    testGroupId = res.body.group.group_id;
+                }
+            });
+
+            describe('POST /auth/groups', () => {
+                it('should create a new group successfully', async () => {
+                    const groupName = 'Test Group to Create';
+                    const res = await chai.request(app)
+                        .post('/auth/groups')
+                        .set('Authorization', `Bearer ${authToken}`)
+                        .send({ groupName });
+
+                    expect(res).to.have.status(201);
+                    expect(res.body).to.have.property('message', 'Group created successfully');
+                    expect(res.body).to.have.property('group').to.be.an('object');
+                    expect(res.body.group).to.have.property('group_id').to.be.a('string');
+                    expect(res.body.group).to.have.property('group_name', groupName);
+
+                    // Store the created group ID for later tests
+                    testGroupId = res.body.group.group_id;
+
+                    // Verify group was created in database
+                    const [groups] = await pool.query('SELECT * FROM groups WHERE group_id = ?', [testGroupId]);
+                    expect(groups).to.have.lengthOf(1);
+                    expect(groups[0].group_name).to.equal(groupName);
+
+                    // Verify user_group entry was created
+                    const [userGroups] = await pool.query('SELECT * FROM user_groups WHERE group_id = ? AND user_id = ?', [testGroupId, testUserId]);
+                    expect(userGroups).to.have.lengthOf(1);
+                });
+
+                it('should not create a group without authentication', async () => {
+                    const groupName = 'Unauthorized Group';
+                    const res = await chai.request(app)
+                        .post('/auth/groups')
+                        .send({ groupName });
+
+                    expect(res).to.have.status(401);
+                });
+
+                it('should not create a group without group name', async () => {
+                    const res = await chai.request(app)
+                        .post('/auth/groups')
+                        .set('Authorization', `Bearer ${authToken}`)
+                        .send({}); // Missing groupName
+
+                    expect(res).to.have.status(400);
+                    expect(res.body).to.have.property('message', 'Group name is required');
+                });
+            });
+
+            describe('GET /auth/groups', () => {
+                it('should get the authenticated user\'s groups', async () => {
+                    const res = await chai.request(app)
+                        .get('/auth/groups')
+                        .set('Authorization', `Bearer ${authToken}`);
+
+                    expect(res).to.have.status(200);
+                    expect(res.body).to.be.an('array');
+                    // Check if the created test group is in the list
+                    const createdGroup = res.body.find(group => group.group_id === testGroupId);
+                    expect(createdGroup).to.exist;
+                    expect(createdGroup).to.have.property('group_name', 'Temporary Test Group');
+                });
+
+                it('should not get groups without authentication', async () => {
+                    const res = await chai.request(app)
+                        .get('/auth/groups');
+
+                    expect(res).to.have.status(401);
+                });
+            });
+
+            describe('GET /auth/groups/:groupId', () => {
+                it('should get a specific group by ID for a member', async () => {
+                    const res = await chai.request(app)
+                        .get(`/auth/groups/${testGroupId}`)
+                        .set('Authorization', `Bearer ${authToken}`);
+
+                    expect(res).to.have.status(200);
+                    expect(res.body).to.be.an('object');
+                    expect(res.body).to.have.property('group_id', testGroupId);
+                    expect(res.body).to.have.property('group_name', 'Temporary Test Group');
+                    expect(res.body).to.have.property('members').to.be.an('array');
+                    // Check if the current user is in the members list
+                    const currentUserMember = res.body.members.find(member => member.id === testUserId);
+                    expect(currentUserMember).to.exist;
+                });
+
+                it('should not get a specific group by ID for a non-member', async () => {
+                    // Create another user who is not a member of testGroupId
+                    const anotherUser = {
+                         email: 'anotheruser@example.com',
+                         password: 'anotherPassword123'
+                    };
+                    await chai.request(app).post('/auth/register').send(anotherUser);
+                    const loginRes = await chai.request(app).post('/auth/login').send(anotherUser);
+                    const anotherAuthToken = loginRes.body.token;
+
+                    const res = await chai.request(app)
+                        .get(`/auth/groups/${testGroupId}`)
+                        .set('Authorization', `Bearer ${anotherAuthToken}`);
+
+                    expect(res).to.have.status(404); // Or 403 depending on desired behavior for non-members
+                    expect(res.body).to.have.property('message');
+
+                    // Clean up the extra user
+                    // Note: Deleting user might require a backend endpoint or manual cleanup
+                    const [anotherUserRow] = await pool.query('SELECT user_id FROM users WHERE email = ?', [anotherUser.email]);
+                    if (anotherUserRow.length > 0) {
+                        await pool.query('DELETE FROM users WHERE user_id = ?', [anotherUserRow[0].user_id]);
+                    }
+                });
+
+                 it('should not get a specific group by ID without authentication', async () => {
+                    const res = await chai.request(app)
+                        .get(`/auth/groups/${testGroupId}`);
+
+                    expect(res).to.have.status(401);
+                });
+
+                 it('should return 404 for a non-existent group ID', async () => {
+                    const nonExistentGroupId = '00000000-0000-0000-0000-000000000000'; // Example non-existent UUID
+                    const res = await chai.request(app)
+                        .get(`/auth/groups/${nonExistentGroupId}`)
+                        .set('Authorization', `Bearer ${authToken}`);
+
+                    expect(res).to.have.status(404);
+                    expect(res.body).to.have.property('message');
+                 });
+            });
+
+            // New tests for Joining Group Functionality
+            describe('POST /auth/groups/:groupId/join', () => {
+                let anotherUserId; // To store the ID of another test user
+                let anotherAuthToken; // To store the token for another test user
+
+                before(async () => {
+                    // Create and login another user who is not yet a member of testGroupId
+                    const anotherUser = {
+                         email: 'joinuser@example.com',
+                         password: 'joinPassword123'
+                    };
+                    await chai.request(app).post('/auth/register').send(anotherUser);
+                    const loginRes = await chai.request(app).post('/auth/login').send(anotherUser);
+                    anotherAuthToken = loginRes.body.token;
+
+                    const [anotherUserRow] = await pool.query('SELECT user_id FROM users WHERE email = ?', [anotherUser.email]);
+                    anotherUserId = anotherUserRow[0].user_id;
+                });
+
+                after(async () => {
+                    // Clean up the user_group entry and the extra user after tests
+                    await pool.query('DELETE FROM user_groups WHERE user_id = ? AND group_id = ?', [anotherUserId, testGroupId]);
+                    await pool.query('DELETE FROM users WHERE user_id = ?', [anotherUserId]);
+                });
+
+                it('should allow an authenticated user to join a group', async () => {
+                    const res = await chai.request(app)
+                        .post(`/auth/groups/${testGroupId}/join`)
+                        .set('Authorization', `Bearer ${anotherAuthToken}`);
+
+                    expect(res).to.have.status(200);
+                    expect(res.body).to.have.property('message', 'Successfully joined the group');
+
+                    // Verify user_group entry was created
+                    const [userGroups] = await pool.query('SELECT * FROM user_groups WHERE group_id = ? AND user_id = ?', [testGroupId, anotherUserId]);
+                    expect(userGroups).to.have.lengthOf(1);
+                });
+
+                it('should not allow an authenticated user to join a group they are already a member of', async () => {
+                    // First, ensure the user is a member (from the previous test or explicitly add them)
+                     await pool.query('INSERT INTO user_groups (group_id, user_id) VALUES (?, ?)', [testGroupId, anotherUserId]);
+
+                    const res = await chai.request(app)
+                        .post(`/auth/groups/${testGroupId}/join`)
+                        .set('Authorization', `Bearer ${anotherAuthToken}`);
+
+                    expect(res).to.have.status(400);
+                    expect(res.body).to.have.property('message', 'You are already a member of this group');
+                });
+
+                it('should not allow joining a non-existent group', async () => {
+                    const nonExistentGroupId = '11111111-1111-1111-1111-111111111111'; // Another non-existent UUID
+                    const res = await chai.request(app)
+                        .post(`/auth/groups/${nonExistentGroupId}/join`)
+                        .set('Authorization', `Bearer ${anotherAuthToken}`);
+
+                    expect(res).to.have.status(404);
+                    expect(res.body).to.have.property('message', 'Group not found');
+                });
+
+                it('should not allow joining a group without authentication', async () => {
+                     const res = await chai.request(app)
+                        .post(`/auth/groups/${testGroupId}/join`);
+
+                     expect(res).to.have.status(401);
+                });
             });
         });
     });
