@@ -324,7 +324,7 @@ exports.getUserGroups = async (req, res) => {
     try {
         // Query to join user_groups and groups table and filter by user_id
         const [groups] = await pool.query(
-            'SELECT g.group_id, g.group_name FROM groups g JOIN user_groups ug ON g.group_id = ug.group_id WHERE ug.user_id = ?',
+            'SELECT g.group_id, g.group_name, g.profile_picture FROM groups g JOIN user_groups ug ON g.group_id = ug.group_id WHERE ug.user_id = ?',
             [userId]
         );
 
@@ -340,6 +340,7 @@ exports.getUserGroups = async (req, res) => {
 exports.createGroup = async (req, res) => {
     const { groupName } = req.body;
     const userId = req.user.user_id; // Get user_id from the authenticated user
+    const profilePicture = req.file ? req.file.filename : null; // Get the uploaded file name if exists
 
     // Basic validation
     if (!groupName) {
@@ -353,10 +354,10 @@ exports.createGroup = async (req, res) => {
         // Start a transaction
         await pool.query('START TRANSACTION');
 
-        // Insert into the groups table
+        // Insert into the groups table with profile picture
         await pool.query(
-            'INSERT INTO groups (group_id, group_name) VALUES (?, ?)',
-            [groupId, groupName]
+            'INSERT INTO groups (group_id, group_name, profile_picture) VALUES (?, ?, ?)',
+            [groupId, groupName, profilePicture]
         );
 
         // Insert into the user_groups table to link the creator
@@ -373,7 +374,8 @@ exports.createGroup = async (req, res) => {
             message: 'Group created successfully',
             group: { 
                 group_id: groupId, 
-                group_name: groupName 
+                group_name: groupName,
+                profile_picture: profilePicture
             }
         });
 

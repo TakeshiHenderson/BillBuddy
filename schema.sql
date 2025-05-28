@@ -12,7 +12,8 @@ CREATE TABLE users (
 
 CREATE TABLE groups (
     group_id CHAR(36) NOT NULL PRIMARY KEY,
-    group_name VARCHAR(50) NOT NULL
+    group_name VARCHAR(50) NOT NULL,
+    profile_picture VARCHAR(255) DEFAULT NULL
 );
 
 CREATE TABLE user_groups (

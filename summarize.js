@@ -142,28 +142,32 @@ async function summarize(bills, groupId) {
                 [invoiceId, oldestBill[0].date_start, newestBill[0].date_end]
             );
 
-            // Get user IDs for the group
-            const [groupUsers] = await pool.query(
-                'SELECT u.user_id, email FROM users u JOIN user_groups ug ON u.user_id = ug.user_id WHERE ug.group_id = ?',
-                [groupId]
-            );
+            console.log('\n=== Records to be created ===');
+            console.log('Number of records:', records.length);
+            console.log('Records data:', JSON.stringify(records, null, 2));
 
-            // Create a mapping of email to user_id
-            const userMap = {};
-            for (const user of groupUsers) {
-                const email = user.email;
-                if (email.startsWith('test')) {
-                    const letter = email.charAt(4).toUpperCase(); // Extract the letter from testX@example.com
-                    userMap[letter] = user.user_id;
-                }
-            }
-
-            // Insert records with proper user IDs
+            // Insert records directly using the user IDs
             for (const record of records) {
-                await pool.query(
-                    'INSERT INTO record (record_id, invoice_id, debtor, debtee, nominal, already_paid) VALUES (?, ?, ?, ?, ?, ?)',
-                    [uuidv4(), invoiceId, userMap[record.from], userMap[record.to], record.nominal, false]
-                );
+                console.log('\nProcessing record:', {
+                    from: record.from,
+                    to: record.to,
+                    nominal: record.nominal
+                });
+
+                try {
+                    const recordId = uuidv4();
+                    await pool.query(
+                        'INSERT INTO record (record_id, invoice_id, debtor, debtee, nominal, already_paid) VALUES (?, ?, ?, ?, ?, ?)',
+                        [recordId, invoiceId, record.from, record.to, record.nominal, false]
+                    );
+                    console.log('Successfully created record with ID:', recordId);
+                } catch (error) {
+                    console.error('Error creating record:', {
+                        error: error.message,
+                        record: record
+                    });
+                    throw error;
+                }
             }
 
             // Mark bills as summarized
@@ -180,5 +184,9 @@ async function summarize(bills, groupId) {
     return records;
 }
 
-module.exports = summarize;
+module.exports = {
+    summarize,
+    Bill,
+    Item
+};
 

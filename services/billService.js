@@ -1,5 +1,6 @@
 const pool = require('../db'); 
 const { v4: uuidv4 } = require('uuid');
+const { summarize, Bill, Item } = require('../summarize');
 
 // Import the rounding function from summarize.js
 // const { roundToTwoDecimals } = require('./summarize');
@@ -92,7 +93,177 @@ const getBillsByGroup = async (groupId) => {
   }
 };
 
+const summarizeBills = async (groupId) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        // Get all unsummarized bills for this group
+        const [unsummarizedBills] = await connection.execute(
+            `SELECT b.*, u.username as paid_by_name, 
+                (SELECT COUNT(*) FROM items WHERE bill_id = b.bill_id) as item_count,
+                (SELECT SUM(item_price) FROM items WHERE bill_id = b.bill_id) as total_amount
+             FROM bills b
+             LEFT JOIN users u ON b.paid_by = u.user_id
+             WHERE b.group_id = ? AND b.summarized = false
+             ORDER BY b.date_created DESC`,
+            [groupId]
+        );
+
+        // Get items for each bill
+        for (let bill of unsummarizedBills) {
+            const [items] = await connection.execute(
+                `SELECT i.*, u.username as paid_by_name
+                 FROM items i
+                 LEFT JOIN users u ON i.to_be_paid_by = u.user_id
+                 WHERE i.bill_id = ?`,
+                [bill.bill_id]
+            );
+            bill.items = items;
+        }
+
+        // Convert bills to Bill instances with Item instances
+        const formattedBills = unsummarizedBills.map(bill => {
+            const billInstance = new Bill();
+            
+            // Add each item to the bill
+            bill.items.forEach(item => {
+                const itemInstance = new Item(
+                    item.item_price,  // nominal
+                    [item.to_be_paid_by],  // who_to_paid
+                    bill.paid_by  // paid_by
+                );
+                billInstance.addItem(itemInstance);
+            });
+
+            return billInstance;
+        });
+
+        // Use the existing summarize function
+        const records = await summarize(formattedBills, groupId);
+
+        await connection.commit();
+
+        // Return summary for frontend display
+        return {
+            group_id: groupId,
+            total_bills: unsummarizedBills.length,
+            total_amount: unsummarizedBills.reduce((sum, bill) => sum + bill.total_amount, 0),
+            records: records,
+            date_created: new Date().toISOString()
+        };
+
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error in summarizeBills:', error);
+        throw error;
+    } finally {
+        connection.release();
+    }
+};
+
+async function testSummarizeBills(groupId) {
+    console.log('\n=== Starting Test Summarize Bills Service ===');
+    console.log('Group ID:', groupId);
+    
+    try {
+        // Get all unsummarized bills for the group
+        console.log('\n1. Fetching unsummarized bills...');
+        const [unsummarizedBills] = await pool.query(
+            `SELECT b.*, u.username as paid_by_name, 
+                (SELECT COUNT(*) FROM items WHERE bill_id = b.bill_id) as item_count,
+                (SELECT SUM(item_price) FROM items WHERE bill_id = b.bill_id) as total_amount
+             FROM bills b
+             LEFT JOIN users u ON b.paid_by = u.user_id
+             WHERE b.group_id = ? AND b.summarized = false
+             ORDER BY b.date_created DESC`,
+            [groupId]
+        );
+
+        console.log('\n=== Unsummarized Bills Details ===');
+        console.log('Number of bills found:', unsummarizedBills.length);
+        console.log('Bills data:', JSON.stringify(unsummarizedBills, null, 2));
+
+        if (!unsummarizedBills || unsummarizedBills.length === 0) {
+            throw new Error('No unsummarized bills found for this group');
+        }
+
+        // Get items for each bill
+        console.log('\n2. Fetching items for each bill...');
+        for (let bill of unsummarizedBills) {
+            console.log(`\nProcessing bill ${bill.bill_id}:`);
+            console.log('Bill paid by:', bill.paid_by);
+            console.log('Bill paid by name:', bill.paid_by_name);
+            
+            const [items] = await pool.query(
+                `SELECT i.*, u.username as paid_by_name
+                 FROM items i
+                 LEFT JOIN users u ON i.to_be_paid_by = u.user_id
+                 WHERE i.bill_id = ?`,
+                [bill.bill_id]
+            );
+            bill.items = items;
+            
+            console.log(`Items for Bill ${bill.bill_id}:`);
+            console.log('Number of items:', items.length);
+            console.log('Items data:', JSON.stringify(items, null, 2));
+        }
+
+        // Convert bills to Bill instances with Item instances
+        console.log('\n3. Converting bills to Bill instances...');
+        const formattedBills = unsummarizedBills.map(bill => {
+            console.log(`\nConverting bill ${bill.bill_id}:`);
+            const billInstance = new Bill();
+            
+            // Add each item to the bill
+            bill.items.forEach(item => {
+                console.log(`Processing item:`, {
+                    item_price: item.item_price,
+                    to_be_paid_by: item.to_be_paid_by,
+                    paid_by: bill.paid_by
+                });
+                
+                const itemInstance = new Item(
+                    item.item_price,  // nominal
+                    [item.to_be_paid_by],  // who_to_paid
+                    bill.paid_by  // paid_by
+                );
+                billInstance.addItem(itemInstance);
+            });
+
+            return billInstance;
+        });
+
+        console.log('\n4. Calling summarize function...');
+        // Use the summarize function to get the records
+        const records = await summarize(formattedBills, groupId);
+        console.log('\nSummarize function returned records:', JSON.stringify(records, null, 2));
+
+        const result = {
+            group_id: groupId,
+            total_bills: unsummarizedBills.length,
+            total_amount: unsummarizedBills.reduce((sum, bill) => sum + bill.total_amount, 0),
+            records: records,
+            date_created: new Date().toISOString()
+        };
+
+        console.log('\n=== Final Result ===');
+        console.log(result.total_amount)
+        console.log(JSON.stringify(result, null, 2));
+
+        return result;
+
+    } catch (error) {
+        console.error('\n=== Error in test summarize bills ===');
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        throw error;
+    }
+}
+
 module.exports = {
   saveBill,
-  getBillsByGroup
+  getBillsByGroup,
+  summarizeBills,
+  testSummarizeBills
 }; 

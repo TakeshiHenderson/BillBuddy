@@ -55,7 +55,7 @@ exports.processBillText = async (text) => {
             console.error('Empty response from Gemini');
             return {
                 success: false,
-                error: 'Empty response from Gemini'
+                error: 'Failed to process bill text'
             };
         }
 
@@ -70,7 +70,7 @@ exports.processBillText = async (text) => {
                 console.error('Empty cleaned response');
                 return {
                     success: false,
-                    error: 'Empty cleaned response'
+                    error: 'Failed to process bill text'
                 };
             }
             

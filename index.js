@@ -6,6 +6,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const session = require('express-session');
+const path = require('path');
 
 // Local imports
 const passport = require('./passport');
@@ -14,6 +15,8 @@ const authMiddleware = require('./auth/authMiddleware');
 const summarize = require('./summarize');
 const llmRoutes = require('./routes/llmRoutes');
 const billRoutes = require('./routes/billRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
+const createUploadDirectories = require('./utils/createUploadDirs');
 
 // =========================================
 // Environment Configuration
@@ -161,6 +164,15 @@ app.use('/api/llm', llmRoutes);
 
 // Bill Routes
 app.use('/api', billRoutes);
+
+// Invoice Routes
+app.use('/api', invoiceRoutes);
+
+// Create upload directories
+createUploadDirectories();
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 404 handler - must be after all other routes
 app.use((req, res, next) => {
