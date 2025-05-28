@@ -13,6 +13,7 @@ const authRoutes = require('./auth/authRoutes');
 const authMiddleware = require('./auth/authMiddleware');
 const summarize = require('./summarize');
 const llmRoutes = require('./routes/llmRoutes');
+const billRoutes = require('./routes/billRoutes');
 
 // =========================================
 // Environment Configuration
@@ -85,11 +86,6 @@ app.use((req, res, next) => {
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-});
 
 // Session Configuration
 app.use(session({
@@ -143,6 +139,12 @@ app.get('/', (req, res) => {
     res.send('Hello world!');
 });
 
+// Test route for bills
+app.get('/api/test', (req, res) => {
+    console.log('Test route hit');
+    res.json({ message: 'Test route working' });
+});
+
 // Protected Routes
 app.get('/dashboard', 
     authMiddleware, 
@@ -156,6 +158,25 @@ app.get('/dashboard',
 
 // LLM Routes
 app.use('/api/llm', llmRoutes);
+
+// Bill Routes
+app.use('/api', billRoutes);
+
+// 404 handler - must be after all other routes
+app.use((req, res, next) => {
+    console.log('404 Not Found:', {
+        method: req.method,
+        url: req.url,
+        path: req.path,
+        baseUrl: req.baseUrl,
+        originalUrl: req.originalUrl
+    });
+    res.status(404).json({
+        error: 'Not Found',
+        message: `Cannot ${req.method} ${req.originalUrl}`,
+        path: req.path
+    });
+});
 
 // =========================================
 // Server Configuration
