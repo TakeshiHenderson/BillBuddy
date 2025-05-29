@@ -46,4 +46,24 @@ router.get('/invoices/group/:groupId', authMiddleware, async (req, res) => {
     }
 });
 
+// PATCH /invoices/:invoiceId/records/:recordId
+router.patch('/invoices/:invoiceId/records/:recordId', authMiddleware, async (req, res) => {
+    console.log('=== Update Record Payment Status Request ===');
+    try {
+        const { invoiceId, recordId } = req.params;
+        const { is_paid } = req.body;
+
+        // Update the record's payment status
+        await pool.query(
+            'UPDATE record SET already_paid = ? WHERE invoice_id = ? AND record_id = ?',
+            [is_paid, invoiceId, recordId]
+        );
+
+        res.json({ message: 'Payment status updated successfully' });
+    } catch (error) {
+        console.error('Error in PATCH /invoices/records:', error);
+        res.status(500).json({ error: 'Failed to update payment status' });
+    }
+});
+
 module.exports = router; 
