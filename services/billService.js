@@ -77,11 +77,6 @@ const saveBill = async (req, res) => {
         return res.status(400).json({ error: 'Missing paid_by' });
     }
 
-    if (!billData.bill_picture) {
-        console.error('❌ Missing bill_picture');
-        return res.status(400).json({ error: 'Missing bill_picture' });
-    }
-
     console.log('\n2. Items Validation:');
     billData.items.forEach((item, index) => {
         console.log(`\nItem ${index + 1}:`, {
@@ -92,14 +87,14 @@ const saveBill = async (req, res) => {
         });
     });
 
-    const connection = await pool.getConnection();
+  const connection = await pool.getConnection();
 
-    try {
+  try {
         console.log('\n=== Starting Database Transaction ===');
-        await connection.beginTransaction();
+    await connection.beginTransaction();
 
-        // 1. Save to bills table
-        const billId = uuidv4();
+    // 1. Save to bills table
+    const billId = uuidv4();
         console.log('\n1. Inserting Bill:', {
             bill_id: billId,
             group_id: billData.group_id,
@@ -108,17 +103,17 @@ const saveBill = async (req, res) => {
             date_created: billData.date_created || new Date()
         });
 
-        const insertBillQuery = `
+    const insertBillQuery = `
             INSERT INTO bills (bill_id, group_id, paid_by, summarized, bill_picture, date_created)
             VALUES (?, ?, ?, ?, ?, ?)
-        `;
-        const [billResult] = await connection.execute(
-            insertBillQuery,
+    `;
+    const [billResult] = await connection.execute(
+      insertBillQuery,
             [billId, billData.group_id, billData.paid_by, false, billData.bill_picture, billData.date_created || new Date()]
-        );
+    );
         console.log('✅ Bill inserted successfully');
 
-        // 2. Save to items table
+    // 2. Save to items table
         console.log('\n2. Processing Items for Insertion:');
         const itemInserts = [];
         for (const item of billData.items) {
@@ -130,7 +125,7 @@ const saveBill = async (req, res) => {
             });
 
             // Calculate nominal per person
-            const nominalPerPerson = item.who_to_paid.length > 0 ? item.nominal / item.who_to_paid.length : item.nominal;
+      const nominalPerPerson = item.who_to_paid.length > 0 ? item.nominal / item.who_to_paid.length : item.nominal;
             const roundedItemPrice = Math.round(nominalPerPerson);
             
             console.log('Price calculation:', {
@@ -161,15 +156,15 @@ const saveBill = async (req, res) => {
             }
         }
 
-        if (itemInserts.length > 0) {
+    if (itemInserts.length > 0) {
             console.log('\n3. Inserting Items into Database:');
             console.log(`Total items to insert: ${itemInserts.length}`);
             
-            const insertItemQuery = `
-                INSERT INTO items (item_id, bill_id, to_be_paid_by, item_name, item_price, already_paid)
-                VALUES ?
-            `;
-            await connection.query(insertItemQuery, [itemInserts]);
+      const insertItemQuery = `
+        INSERT INTO items (item_id, bill_id, to_be_paid_by, item_name, item_price, already_paid)
+        VALUES ?
+      `;
+      await connection.query(insertItemQuery, [itemInserts]);
             console.log('✅ Items inserted successfully');
         } else {
             console.warn('⚠️ No items to insert');
@@ -885,7 +880,7 @@ const handleBillDeletion = async (billId) => {
         return { message: 'Bill deleted successfully' };
     } catch (error) {
         throw error;
-    }
+  }
 };
 
 module.exports = {
