@@ -4,6 +4,40 @@ const billService = require('../services/billService');
 const authMiddleware = require('../auth/authMiddleware');
 const pool = require('../db');
 const { Bill, Item, summarize } = require('../summarize');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+
+// Configure multer for bill image uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '../uploads/bills');
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    // Generate unique filename with timestamp
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'bill-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    // Accept only image files
+    if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
+      return cb(new Error('Only image files are allowed!'), false);
+    }
+    cb(null, true);
+  }
+});
 
 // Test route
 router.get('/test-bills', (req, res) => {
@@ -11,137 +45,114 @@ router.get('/test-bills', (req, res) => {
     res.json({ message: 'Bill routes are working' });
 });
 
-// GET /bills/group/:groupId
-router.get('/bills/group/:groupId', async (req, res) => {
-    console.log('=== Get Bills by Group Request ===');
-    try {
-        const bills = await billService.getBillsByGroup(req.params.groupId);
-        res.json(bills);
-    } catch (error) {
-        console.error('Error in GET /bills/group:', error);
-        res.status(500).json({ error: 'Failed to get bills' });
-    }
-});
+// Get bills by group
+router.get('/bills/group/:groupId', billService.handleGetBillsByGroup);
 
-// GET /bills
-router.get('/bills', async (req, res) => {
-    console.log('=== Get Bills Request ===');
-    try {
-        // For now, just return a message
-        res.json({ message: 'GET /bills endpoint is working' });
-    } catch (error) {
-        console.error('Error in GET /bills:', error);
-        res.status(500).json({ error: 'Failed to get bills' });
-    }
-});
+// Get all bills
+router.get('/bills', billService.handleGetBills);
 
-// POST /bills
-router.post('/bills', async (req, res) => {
-    console.log('=== Bill Creation Request ===');
-    console.log('Headers:', req.headers);
-    console.log('Body:', JSON.stringify(req.body, null, 2));
-    
-  const billData = req.body;
-
-    // Basic validation with detailed logging
-    console.log('Validating bill data:', {
-        hasBillData: !!billData,
-        group_id: billData?.group_id,
-        items: billData?.items?.length,
-        paid_by: billData?.paid_by,
-        rawData: billData
-    });
-
-    if (!billData) {
-        console.error('No bill data received');
-        return res.status(400).json({ error: 'No bill data received' });
-    }
-
-    if (!billData.group_id) {
-        console.error('Missing group_id');
-        return res.status(400).json({ error: 'Missing group_id' });
-    }
-
-    if (!billData.items || !Array.isArray(billData.items) || billData.items.length === 0) {
-        console.error('Missing or invalid items array');
-        return res.status(400).json({ error: 'Missing or invalid items array' });
-    }
-
-    if (!billData.paid_by) {
-        console.error('Missing paid_by');
-        return res.status(400).json({ error: 'Missing paid_by' });
-  }
-
+// Get bill image (public endpoint, no auth required)
+router.get('/bills/:billId/image', async (req, res) => {
   try {
-        console.log('Attempting to save bill...');
-    const savedBill = await billService.saveBill(billData);
-        console.log('Bill saved successfully:', savedBill);
-    res.status(201).json(savedBill);
+    const result = await billService.getBillImage(req.params.billId);
+    res.json(result);
   } catch (error) {
-        console.error('Error saving bill in route handler:', error);
-        console.error('Error stack:', error.stack);
-        res.status(500).json({ 
-            error: 'Failed to save bill', 
-            details: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
+    console.error('Error getting bill image:', error);
+    res.status(500).json({ 
+      error: 'Failed to get bill image',
+      details: error.message
+    });
   }
 });
 
-// POST /bills/summarize/:groupId
-router.post('/bills/summarize/:groupId', authMiddleware, async (req, res) => {
-    console.log('=== Summarize Bills Request ===');
-    try {
-        const { groupId } = req.params;
-        
-        // Validate groupId
-        if (!groupId) {
-            return res.status(400).json({ error: 'Group ID is required' });
-        }
+// Apply auth middleware for protected routes
+router.use(authMiddleware);
 
-        // Get all bills for the group
-        const bills = await billService.getBillsByGroup(groupId);
-        
-        if (!bills || bills.length === 0) {
-            return res.status(404).json({ error: 'No bills found for this group' });
-        }
-
-        // Summarize the bills
-        const summary = await billService.summarizeBills(bills, groupId);
-        
-        console.log('Bills summarized successfully:', summary);
-        res.json(summary);
-    } catch (error) {
-        console.error('Error in summarize bills:', error);
-        res.status(500).json({ 
-            error: 'Failed to summarize bills',
-            details: error.message
-        });
+// Create new bill with image upload
+router.post('/bills', billService.upload.single('bill_picture'), async (req, res) => {
+  try {
+    // Add the file path to the request body if a file was uploaded
+    if (req.file) {
+      req.body.bill_picture = `/uploads/bills/${req.file.filename}`;
     }
+    
+    // Call saveBill directly
+    await billService.saveBill(req, res);
+  } catch (error) {
+    console.error('Error creating bill:', error);
+    res.status(500).json({ 
+      error: 'Failed to create bill',
+      details: error.message 
+    });
+  }
 });
 
-// GET endpoint for testing bill summarization
-router.get('/bills/summarize/:groupId', async (req, res) => {
-    console.log('=== Test Summarize Bills Request ===');
-    try {
-        const { groupId } = req.params;
-        
-        // Validate groupId
-        if (!groupId) {
-            return res.status(400).json({ error: 'Group ID is required' });
-        }
-
-        // Use the service function to handle the summarization
-        const summary = await billService.testSummarizeBills(groupId);
-        res.json(summary);
-
-    } catch (error) {
-        console.error('Error in test summarize bills:', error);
-        res.status(500).json({ 
-            error: 'Failed to test summarize bills',
-            details: error.message
-        });
-    }
+// Delete bill (including image file)
+router.delete('/bills/:billId', async (req, res) => {
+  try {
+    const result = await billService.handleBillDeletion(req.params.billId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting bill:', error);
+    res.status(error.message === 'Bill not found' ? 404 : 500).json({ 
+      error: 'Failed to delete bill',
+      details: error.message 
+    });
+  }
 });
+
+// Other routes
+router.delete('/test-delete-bills/:billId', billService.handleTestDeleteBills);
+router.post('/bills/summarize/:groupId', billService.handleSummarizeBills);
+router.get('/bills/:billId', billService.handleGetBillById);
+router.put('/bills/:billId', billService.handleUpdateBill);
+
+// Get bill details including image path (for debugging)
+router.get('/bills/:billId/debug', async (req, res) => {
+  try {
+    const result = await billService.getBillDebugInfo(req.params.billId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting bill debug info:', error);
+    res.status(500).json({ 
+      error: 'Failed to get bill debug info',
+      details: error.message
+    });
+  }
+});
+
+// Debug route to check database
+router.get('/bills/:billId/check', async (req, res) => {
+  try {
+    const result = await billService.checkBillStatus(req.params.billId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error checking bill:', error);
+    res.status(500).json({ 
+      error: 'Failed to check bill',
+      details: error.message
+    });
+  }
+});
+
+// Upload bill image
+router.post('/upload', authMiddleware, billService.upload.single('bill_picture'), async (req, res) => {
+  try {
+    const result = await billService.handleFileUpload(req.file);
+    res.json(result);
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({ 
+      error: 'Failed to upload image',
+      details: error.message 
+    });
+  }
+});
+
+// Summarize bills
+router.post('/bills/summarize/:groupId', billService.handleSummarizeBills);
+
+// Test summarize bills (for development only)
+router.post('/bills/test-summarize/:groupId', billService.handleTestSummarizeBills);
 
 module.exports = router; 

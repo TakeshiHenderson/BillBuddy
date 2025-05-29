@@ -11,11 +11,15 @@ const pool = require('../db');
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, 'uploads/group-photos/');
+        // Determine if this is a user profile or group profile upload
+        const isUserProfile = req.path.includes('/profile/photo');
+        const uploadPath = isUserProfile ? 'uploads/profile-photos/' : 'uploads/group-photos/';
+        cb(null, uploadPath);
     },
     filename: function (req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'group-' + uniqueSuffix + path.extname(file.originalname));
+        const prefix = req.path.includes('/profile/photo') ? 'user-' : 'group-';
+        cb(null, prefix + uniqueSuffix + path.extname(file.originalname));
     }
 });
 
@@ -49,6 +53,10 @@ router.get('/groups', authMiddleware, authController.getUserGroups);
 router.post('/groups', authMiddleware, upload.single('profilePicture'), authController.createGroup);
 router.get('/groups/:groupId', authMiddleware, authController.getGroupById);
 router.post('/groups/:groupId/join', authMiddleware, authController.joinGroup);
+router.put('/groups/:groupId/photo', authMiddleware, upload.single('profilePicture'), authController.updateGroupPhoto);
+
+// User profile picture route
+router.put('/profile/photo', authMiddleware, upload.single('profilePicture'), authController.updateProfilePhoto);
 
 // Google OAuth routes
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));

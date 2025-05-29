@@ -5,7 +5,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 exports.processBillText = async (text) => {
     try {
-        console.log('Received text:', text);
+        console.log('\n=== Starting Bill Text Processing ===');
+        console.log('Input text:', text);
 
         const model = genAI.getGenerativeModel({ 
             model: "gemini-2.5-flash-preview-04-17",
@@ -22,7 +23,8 @@ exports.processBillText = async (text) => {
         Rules:
         1. Extract items with quantity, name, and total price
         2. Remove commas from numbers (e.g., "24,500" → 24500)
-        3. Use the last number on each line as the total price
+        3. Use the last number on each line as the total price, Consider the minus value in the receipt, that can be considered as the discount per item
+            then subtract it directly and distribute is for each item if the quantity is more than one, i want you to focus to the minus value also and for the distributing the discount among the item
         4. Ignore non-item lines (headers, totals, etc.)
         5. Also complete the missing part in the tesxt
 
@@ -45,14 +47,16 @@ exports.processBillText = async (text) => {
 
         Respond with ONLY the JSON object, no other text.`;
 
+        console.log('\n=== Getting Response from Gemini ===');
         const result = await model.generateContent(prompt);
         const response = result.response.text();
         
-        console.log('Raw response:', response);
+        console.log('Gemini Response:', response);
 
         // If response is empty, return error
         if (!response || response.trim() === '') {
-            console.error('Empty response from Gemini');
+            console.error('\n=== Error: Empty Response ===');
+            console.error('Gemini returned an empty response');
             return {
                 success: false,
                 error: 'Failed to process bill text'
@@ -61,13 +65,15 @@ exports.processBillText = async (text) => {
 
         // Parse the JSON response
         try {
+            console.log('\n=== Processing Response ===');
             // Clean the response to ensure it's valid JSON
             const cleanedResponse = response.trim().replace(/^```json\n?|\n?```$/g, '');
-            console.log('Cleaned response:', cleanedResponse);
+            console.log('Cleaned Response:', cleanedResponse);
             
             // If cleaned response is empty, return error
             if (!cleanedResponse || cleanedResponse.trim() === '') {
-                console.error('Empty cleaned response');
+                console.error('\n=== Error: Empty Cleaned Response ===');
+                console.error('Response was empty after cleaning');
                 return {
                     success: false,
                     error: 'Failed to process bill text'
@@ -79,7 +85,7 @@ exports.processBillText = async (text) => {
             
             // If the response is incomplete, try to fix it
             if (!cleanedResponse.endsWith('}')) {
-                console.log('Response is incomplete, attempting to fix...');
+                console.log('\n=== Fixing Incomplete Response ===');
                 // If we have items but they're incomplete
                 if (cleanedResponse.includes('"items": [')) {
                     // If the items array is incomplete
@@ -98,7 +104,7 @@ exports.processBillText = async (text) => {
                 }
             }
 
-            console.log('Fixed response:', fixedResponse);
+            console.log('Fixed Response:', fixedResponse);
             
             // Validate JSON structure before parsing
             if (!fixedResponse.startsWith('{') || !fixedResponse.endsWith('}')) {
@@ -106,7 +112,7 @@ exports.processBillText = async (text) => {
             }
 
             const parsedResponse = JSON.parse(fixedResponse);
-            console.log('Parsed response:', parsedResponse);
+            console.log('Parsed Response:', parsedResponse);
 
             // Validate the parsed data
             if (!parsedResponse.items || !Array.isArray(parsedResponse.items)) {
@@ -141,18 +147,20 @@ exports.processBillText = async (text) => {
                 discount: Number(parsedResponse.discount) || 0
             };
 
-            console.log('Final validated response:', validatedResponse);
+            console.log('\n=== Final Result ===');
+            console.log('Validated Response:', validatedResponse);
 
             return {
                 success: true,
                 ...validatedResponse
             };
         } catch (parseError) {
-            console.error('Error parsing Gemini response:', parseError);
-            console.error('Raw response:', response);
+            console.error('\n=== Error: Failed to Parse Response ===');
+            console.error('Parse Error:', parseError);
+            console.error('Raw Response:', response);
             
             // Try to extract items directly from the text as a fallback
-            console.log('Attempting fallback parsing...');
+            console.log('\n=== Attempting Fallback Parsing ===');
             const items = [];
             const lines = text.split('\n');
             
@@ -170,7 +178,7 @@ exports.processBillText = async (text) => {
             }
             
             if (items.length > 0) {
-                console.log('Fallback parsing successful:', items);
+                console.log('Fallback Parsing Successful:', items);
                 return {
                     success: true,
                     items,
@@ -186,7 +194,8 @@ exports.processBillText = async (text) => {
             };
         }
     } catch (error) {
-        console.error('Gemini processing error:', error);
+        console.error('\n=== Error: Gemini Processing Failed ===');
+        console.error('Error:', error);
         throw new Error('Failed to process bill text');
     }
 }; 

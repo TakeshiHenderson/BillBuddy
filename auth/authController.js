@@ -109,7 +109,7 @@ exports.login = async (req, res) => {
 exports.profile = async (req, res) => {
     try {
         const [user] = await pool.query(
-            'SELECT user_id, username, email FROM users WHERE user_id = ?', 
+            'SELECT user_id, username, email, profile_picture FROM users WHERE user_id = ?', 
             [req.user.user_id]
         );
         if (user.length === 0) {
@@ -395,7 +395,7 @@ exports.getGroupById = async (req, res) => {
     try {
         // Query to get group details and check if the user is a member
         const [groupRows] = await pool.query(
-            'SELECT g.group_id, g.group_name FROM groups g JOIN user_groups ug ON g.group_id = ug.group_id WHERE g.group_id = ? AND ug.user_id = ?',
+            'SELECT g.group_id, g.group_name, g.profile_picture FROM groups g JOIN user_groups ug ON g.group_id = ug.group_id WHERE g.group_id = ? AND ug.user_id = ?',
             [groupId, userId]
         );
 
@@ -463,6 +463,74 @@ exports.joinGroup = async (req, res) => {
         console.error('Error joining group:', err);
         res.status(500).json({ message: 'Server error' });
     }
+};
+
+// Update user profile picture
+const updateProfilePhoto = async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    try {
+        const userId = req.user.user_id;
+        const profilePicture = req.file.filename;
+
+        // Update user's profile picture in database
+        await pool.query(
+            'UPDATE users SET profile_picture = ? WHERE user_id = ?',
+            [profilePicture, userId]
+        );
+
+        res.json({
+            message: 'Profile picture updated successfully',
+            profile_picture: profilePicture
+        });
+    } catch (error) {
+        console.error('Error updating profile picture:', error);
+        res.status(500).json({ message: 'Failed to update profile picture' });
+    }
+};
+
+// Update group profile picture
+const updateGroupPhoto = async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    try {
+        const { groupId } = req.params;
+        const profilePicture = req.file.filename;
+
+        // Update group's profile picture in database
+        await pool.query(
+            'UPDATE groups SET profile_picture = ? WHERE group_id = ?',
+            [profilePicture, groupId]
+        );
+
+        res.json({
+            message: 'Group profile picture updated successfully',
+            profile_picture: profilePicture
+        });
+    } catch (error) {
+        console.error('Error updating group profile picture:', error);
+        res.status(500).json({ message: 'Failed to update group profile picture' });
+    }
+};
+
+module.exports = {
+    register: exports.register,
+    login: exports.login,
+    profile: exports.profile,
+    updateProfile: exports.updateProfile,
+    setPassword: exports.setPassword,
+    requestPasswordReset: exports.requestPasswordReset,
+    resetPassword: exports.resetPassword,
+    getUserGroups: exports.getUserGroups,
+    createGroup: exports.createGroup,
+    getGroupById: exports.getGroupById,
+    joinGroup: exports.joinGroup,
+    updateProfilePhoto,
+    updateGroupPhoto
 };
 
 

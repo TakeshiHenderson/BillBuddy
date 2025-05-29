@@ -17,6 +17,7 @@ const llmRoutes = require('./routes/llmRoutes');
 const billRoutes = require('./routes/billRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const createUploadDirectories = require('./utils/createUploadDirs');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 // =========================================
 // Environment Configuration
@@ -86,9 +87,8 @@ app.use((req, res, next) => {
 });
 
 // Body Parser
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // Session Configuration
 app.use(session({
@@ -167,6 +167,9 @@ app.use('/api', billRoutes);
 
 // Invoice Routes
 app.use('/api', invoiceRoutes);
+
+// Upload Routes
+app.use('/api', uploadRoutes);
 
 // Create upload directories
 createUploadDirectories();
