@@ -454,14 +454,15 @@ exports.getGroupById = async (req, res) => {
 
         // Fetch members of the group
         const [memberRows] = await pool.query(
-            'SELECT u.user_id, u.username FROM users u JOIN user_groups ug ON u.user_id = ug.user_id WHERE ug.group_id = ?',
+            'SELECT u.user_id, u.username, u.profile_picture FROM users u JOIN user_groups ug ON u.user_id = ug.user_id WHERE ug.group_id = ?',
             [groupId]
         );
 
         // Add members to the group object
         group.members = memberRows.map(member => ({
             id: member.user_id,
-            username: member.username
+            username: member.username,
+            profile_picture: member.profile_picture
         }));
 
         res.json(group);
