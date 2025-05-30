@@ -248,32 +248,36 @@ exports.requestPasswordReset = async (req, res) => {
         }
 
         // Generate reset token
-        const resetToken = crypto.randomBytes(32).toString('hex');
-        const expiryTime = new Date(Date.now() + 3600000); // Token expires in 1 hour
+        const resetToken = crypto.randomBytes(25).toString('hex'); // Generate 50-character token
+        const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
 
         // Store token in database
         await pool.query(
             'UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?',
-            [resetToken, expiryTime, email]
+            [resetToken, resetTokenExpiry, email]
         );
 
         // Send email with reset link
         const transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST,
-            port: process.env.SMTP_PORT,
-            secure: false, // true for 465, false for 587
+            service: 'gmail',
             auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
             }
-        }); 
+        });
 
-        const resetLink = `http://localhost:3000/reset-password/${resetToken}`;
+        const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
         const mailOptions = {
-            from: process.env.SMTP_USER,
+            from: process.env.EMAIL_USER,
             to: email,
             subject: 'Password Reset Request',
-            text: `Click here to reset your password: ${resetLink}`,
+            html: `
+                <h1>Password Reset Request</h1>
+                <p>You requested a password reset. Click the link below to reset your password:</p>
+                <a href="${resetUrl}">Reset Password</a>
+                <p>This link will expire in 1 hour.</p>
+                <p>If you didn't request this, please ignore this email.</p>
+            `
         };
 
         await transporter.sendMail(mailOptions);
@@ -288,32 +292,75 @@ exports.requestPasswordReset = async (req, res) => {
 
 exports.resetPassword = async (req, res) => {
     const { token, newPassword } = req.body;
+    console.log('Reset password request received:', { 
+        token: token ? 'present' : 'missing', 
+        hasPassword: !!newPassword,
+        tokenLength: token?.length,
+        tokenValue: token // Log the actual token value
+    });
 
     try {
-        // Verify token and check expiry
-        const [user] = await pool.query(
+        // First, let's check if the token exists in the database
+        console.log('Checking token in database...');
+        const [tokenCheck] = await pool.query(
+            'SELECT user_id, reset_token, reset_token_expiry FROM users WHERE reset_token = ?',
+            [token]
+        );
+
+        console.log('Token check result:', {
+            found: tokenCheck.length > 0,
+            token: tokenCheck[0]?.reset_token,
+            tokenLength: tokenCheck[0]?.reset_token?.length,
+            expiry: tokenCheck[0]?.reset_token_expiry,
+            currentTime: new Date()
+        });
+
+        // Let's also check all reset tokens in the database
+        const [allTokens] = await pool.query(
+            'SELECT email, reset_token, reset_token_expiry FROM users WHERE reset_token IS NOT NULL'
+        );
+        console.log('All reset tokens in database:', allTokens.map(t => ({
+            email: t.email,
+            token: t.reset_token,
+            tokenLength: t.reset_token?.length,
+            expiry: t.reset_token_expiry
+        })));
+
+        // Find user with valid reset token
+        console.log('Searching for user with valid reset token...');
+        const [users] = await pool.query(
             'SELECT * FROM users WHERE reset_token = ? AND reset_token_expiry > NOW()',
             [token]
         );
 
-        if (user.length === 0) {
+        console.log('Query result:', { 
+            foundUsers: users.length,
+            hasToken: !!token,
+            tokenLength: token?.length,
+            tokenValue: token // Log the actual token value
+        });
+
+        if (users.length === 0) {
+            console.log('No valid token found or token expired');
             return res.status(400).json({ message: 'Invalid or expired reset token' });
         }
 
+        console.log('Valid token found, hashing new password');
         // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        // Update password and clear reset token fields
+        // Update password and clear reset token
+        console.log('Updating password and clearing reset token');
         await pool.query(
-            'UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL WHERE user_id = ?',
-            [hashedPassword, user[0].user_id]
+            'UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL WHERE reset_token = ?',
+            [hashedPassword, token]
         );
 
-        res.json({ message: 'Password reset successfully' });
-
-    } catch (err) {
-        console.error('Reset password error:', err);
-        res.status(500).json({ message: 'Server error' });
+        console.log('Password reset successful');
+        res.status(200).json({ message: 'Password has been reset successfully' });
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({ message: 'Error resetting password' });
     }
 };
 
@@ -517,6 +564,117 @@ const updateGroupPhoto = async (req, res) => {
     }
 };
 
+// Forgot Password Controller
+const forgotPassword = async (req, res) => {
+    const { email } = req.body;
+
+    try {
+        console.log('Starting forgot password process for:', email);
+        console.log('Environment variables:', {
+            smtpHost: process.env.SMTP_HOST,
+            smtpPort: process.env.SMTP_PORT,
+            smtpUser: process.env.SMTP_USER,
+            hasSmtpPass: !!process.env.SMTP_PASS,
+            frontendUrl: process.env.FRONTEND_URL
+        });
+
+        // Check if user exists
+        const [user] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+        
+        if (user.length === 0) {
+            console.log('User not found:', email);
+            // Don't reveal if email exists or not
+            return res.status(200).json({ 
+                message: 'If your email is registered, you will receive a password reset link.' 
+            });
+        }
+
+        console.log('User found:', {
+            userId: user[0].user_id,
+            email: user[0].email
+        });
+
+        // Generate reset token
+        const resetToken = crypto.randomBytes(25).toString('hex'); // Generate 50-character token
+        const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+
+        console.log('Generated token:', {
+            token: resetToken,
+            tokenLength: resetToken.length,
+            expiry: resetTokenExpiry
+        });
+
+        // Store token in database
+        console.log('Storing token in database...');
+        const [updateResult] = await pool.query(
+            'UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?',
+            [resetToken, resetTokenExpiry, email]
+        );
+        console.log('Token storage result:', {
+            affectedRows: updateResult.affectedRows,
+            changedRows: updateResult.changedRows
+        });
+
+        // Verify token was stored
+        const [verifyToken] = await pool.query(
+            'SELECT reset_token, reset_token_expiry FROM users WHERE email = ?',
+            [email]
+        );
+        console.log('Token verification:', {
+            stored: verifyToken[0]?.reset_token === resetToken,
+            storedToken: verifyToken[0]?.reset_token,
+            generatedToken: resetToken,
+            expiry: verifyToken[0]?.reset_token_expiry
+        });
+
+        // Create reset URL
+        const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+        console.log('Reset URL generated:', resetUrl);
+
+        // Send email
+        console.log('Setting up email transporter with SMTP');
+        const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: process.env.SMTP_PORT,
+            secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+            },
+            debug: true, // Enable debug logging
+            logger: true // Enable logger
+        });
+
+        const mailOptions = {
+            from: process.env.SMTP_USER,
+            to: email,
+            subject: 'Password Reset Request',
+            html: `
+                <h1>Password Reset Request</h1>
+                <p>You requested a password reset. Click the link below to reset your password:</p>
+                <a href="${resetUrl}">Reset Password</a>
+                <p>This link will expire in 1 hour.</p>
+                <p>If you didn't request this, please ignore this email.</p>
+            `
+        };
+
+        console.log('Attempting to send email');
+        await transporter.sendMail(mailOptions);
+        console.log('Email sent successfully');
+
+        res.status(200).json({ 
+            message: 'If your email is registered, you will receive a password reset link.' 
+        });
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        if (error.code === 'EAUTH') {
+            console.error('SMTP authentication failed. Please check your SMTP settings in .env');
+            return res.status(500).json({ message: 'Error sending email. Please try again later.' });
+        }
+        res.status(500).json({ message: 'Error processing password reset request' });
+    }
+};
+
 module.exports = {
     register: exports.register,
     login: exports.login,
@@ -530,7 +688,8 @@ module.exports = {
     getGroupById: exports.getGroupById,
     joinGroup: exports.joinGroup,
     updateProfilePhoto,
-    updateGroupPhoto
+    updateGroupPhoto,
+    forgotPassword
 };
 
 

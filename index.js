@@ -7,9 +7,10 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const path = require('path');
+const jwt = require('jsonwebtoken');
 
 // Local imports
-const passport = require('./passport');
+// const passport = require('./passport');
 const authRoutes = require('./auth/authRoutes');
 const authMiddleware = require('./auth/authMiddleware');
 const summarize = require('./summarize');
@@ -48,7 +49,7 @@ app.use(cors({
         'Access-Control-Allow-Methods',
         'Access-Control-Allow-Credentials'
     ],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range', 'Location'],
     preflightContinue: false,
     optionsSuccessStatus: 204
 }));
@@ -69,7 +70,7 @@ app.options('*', cors({
         'Access-Control-Allow-Methods',
         'Access-Control-Allow-Credentials'
     ],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range', 'Location'],
     preflightContinue: false,
     optionsSuccessStatus: 204
 }));
@@ -80,6 +81,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Access-Control-Allow-Methods, Access-Control-Allow-Credentials');
     res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Expose-Headers', 'Set-Cookie, Location');
     if (req.method === 'OPTIONS') {
         return res.sendStatus(204);
     }
@@ -93,18 +95,46 @@ app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 // Session Configuration
 app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret-key',
-    resave: false,
-    saveUninitialized: false,
+    resave: true,
+    saveUninitialized: true,
     cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
+        secure: false, // Set to false for development
+        sameSite: 'lax', // Use lax for development
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        httpOnly: true,
+        path: '/' // Ensure cookie is available for all paths
+    },
+    name: 'billbuddy.sid' // Custom session name
 }));
 
 // Passport Configuration
-app.use(passport.initialize());
-app.use(passport.session());
+// app.use(passport.initialize());
+// app.use(passport.session());
+
+// Debug middleware for session
+app.use((req, res, next) => {
+    console.log('Session middleware - Session:', {
+        id: req.sessionID,
+        cookie: req.session.cookie,
+        user: req.session.user
+    });
+    console.log('Session middleware - User:', req.user);
+    next();
+});
+
+// Add a route to check session status
+app.get('/api/auth/session', (req, res) => {
+    res.json({
+        isAuthenticated: !!req.user,
+        user: req.user,
+        sessionId: req.sessionID
+    });
+});
+
+// Favicon handling
+app.get('/favicon.ico', (req, res) => {
+    res.status(204).end(); // No content response
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -118,24 +148,15 @@ app.use((err, req, res, next) => {
 // =========================================
 // Route Configuration
 // =========================================
+
+// Test route
+app.get('/test', (req, res) => {
+    console.log('Test route hit');
+    res.send('Test route working');
+});
+
 // Auth Routes
 app.use('/auth', authRoutes);
-
-// OAuth Routes
-app.get('/auth/google', 
-    passport.authenticate('google', { 
-        scope: ['profile', 'email'] 
-    })
-);
-
-app.get('/auth/google/callback',
-    passport.authenticate('google', { 
-        failureRedirect: '/' 
-    }),
-    (req, res) => {
-        res.redirect('/dashboard');
-    }
-);
 
 // Public Routes
 app.get('/', (req, res) => {
