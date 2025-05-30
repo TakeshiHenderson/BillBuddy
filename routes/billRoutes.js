@@ -104,6 +104,7 @@ router.delete('/bills/:billId', async (req, res) => {
 // Other routes
 router.delete('/test-delete-bills/:billId', billService.handleTestDeleteBills);
 router.post('/bills/summarize/:groupId', billService.handleSummarizeBills);
+router.get('/bills/summarize/:groupId', billService.handleGetSummarizeBills);
 router.get('/bills/:billId', billService.handleGetBillById);
 router.put('/bills/:billId', billService.handleUpdateBill);
 

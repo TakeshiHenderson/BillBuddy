@@ -883,6 +883,80 @@ const handleBillDeletion = async (billId) => {
   }
 };
 
+// New handler for GET summarize bills
+const handleGetSummarizeBills = async (req, res) => {
+  console.log('=== Get Summarized Bills Request Service ===');
+  try {
+    const { groupId } = req.params;
+
+    // Validate groupId
+    if (!groupId) {
+      return res.status(400).json({ error: 'Group ID is required' });
+    }
+
+    // Get the latest invoice for bills in this group
+    const [invoices] = await pool.query(
+      `SELECT i.* 
+       FROM invoice i
+       JOIN bills b ON b.date_created BETWEEN i.date_start AND i.date_end
+       WHERE b.group_id = ?
+       ORDER BY i.date_end DESC
+       LIMIT 1`,
+      [groupId]
+    );
+
+    if (!invoices || invoices.length === 0) {
+      console.log(`No summarized data found for group ID: ${groupId}`);
+      return res.json({
+        groupId: groupId,
+        invoice: null,
+        records: []
+      });
+    }
+
+    const latestInvoice = invoices[0];
+
+    // Get records for this invoice with usernames
+    const [records] = await pool.query(
+      `SELECT r.*, 
+        u1.username as debtor_name,
+        u2.username as debtee_name
+       FROM record r
+       JOIN users u1 ON r.debtor = u1.user_id
+       JOIN users u2 ON r.debtee = u2.user_id
+       WHERE r.invoice_id = ?`,
+      [latestInvoice.invoice_id]
+    );
+
+    // Calculate total amount
+    const totalAmount = records.reduce((sum, record) => sum + Number(record.nominal), 0);
+
+    console.log('Summarized data fetched successfully:', {
+      groupId: groupId,
+      invoice: latestInvoice,
+      records: records.length,
+      totalAmount
+    });
+
+    // Return the fetched invoice and records
+    res.json({
+      groupId: groupId,
+      invoice: latestInvoice,
+      records: records,
+      total_amount: totalAmount,
+      record_count: records.length
+    });
+
+  } catch (error) {
+    console.error('Error in handleGetSummarizeBills service:', error);
+    res.status(500).json({
+      error: 'Failed to get summarized bills',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
 module.exports = {
   saveBill,
   getBillsByGroup,
@@ -907,4 +981,5 @@ module.exports = {
   handleTestDeleteBills,
   handleGetBillById,
   handleUpdateBill,
+  handleGetSummarizeBills,
 }; 
