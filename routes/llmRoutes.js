@@ -3,7 +3,6 @@ const router = express.Router();
 const llmService = require('../services/llmService');
 const authMiddleware = require('../auth/authMiddleware');
 
-// Process bill text with LLM
 router.post('/process-bill', authMiddleware, async (req, res) => {
     try {
         const { text } = req.body;

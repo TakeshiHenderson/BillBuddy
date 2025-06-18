@@ -6,10 +6,9 @@ const authController = require('./authController');
 const authMiddleware = require('./authMiddleware');
 const pool = require('../db');
 
-// Configure multer for file uploads
+// for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        // Determine if this is a user profile or group profile upload
         const isUserProfile = req.path.includes('/profile/photo');
         const uploadPath = isUserProfile ? 'uploads/profile-photos/' : 'uploads/group-photos/';
         cb(null, uploadPath);
@@ -27,7 +26,6 @@ const upload = multer({
         fileSize: 2 * 1024 * 1024 // 2MB limit
     },
     fileFilter: function (req, file, cb) {
-        // Accept images only
         if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
             return cb(new Error('Only image files are allowed!'), false);
         }

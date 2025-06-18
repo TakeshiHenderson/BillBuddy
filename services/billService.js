@@ -5,21 +5,20 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 
-// Import the rounding function from summarize.js
+
 // const { roundToTwoDecimals } = require('./summarize');
 
-// Configure multer for bill image uploads
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(__dirname, '../uploads/bills');
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    // Generate unique filename with timestamp
+    
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, 'bill-' + uniqueSuffix + path.extname(file.originalname));
   }
@@ -28,10 +27,9 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 5 * 1024 * 1024 
   },
   fileFilter: function (req, file, cb) {
-    // Accept only image files
     if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
       return cb(new Error('Only image files are allowed!'), false);
     }
@@ -46,7 +44,7 @@ const saveBill = async (req, res) => {
     
     const billData = req.body;
 
-    // Detailed validation logging
+    
     console.log('\n=== Validating Bill Data ===');
     console.log('1. Basic Data Check:', {
         hasBillData: !!billData,
@@ -56,24 +54,24 @@ const saveBill = async (req, res) => {
         items_count: billData?.items?.length
     });
 
-    // Validate required fields
+    
     if (!billData) {
-        console.error('❌ No bill data received');
+        console.error('No bill data received');
         return res.status(400).json({ error: 'No bill data received' });
     }
 
     if (!billData.group_id) {
-        console.error('❌ Missing group_id');
+        console.error('Missing group_id');
         return res.status(400).json({ error: 'Missing group_id' });
     }
 
     if (!billData.items || !Array.isArray(billData.items) || billData.items.length === 0) {
-        console.error('❌ Missing or invalid items array');
+        console.error('Missing or invalid items array');
         return res.status(400).json({ error: 'Missing or invalid items array' });
     }
 
     if (!billData.paid_by) {
-        console.error('❌ Missing paid_by');
+        console.error('Missing paid_by');
         return res.status(400).json({ error: 'Missing paid_by' });
     }
 
@@ -93,7 +91,7 @@ const saveBill = async (req, res) => {
         console.log('\n=== Starting Database Transaction ===');
     await connection.beginTransaction();
 
-    // 1. Save to bills table
+    
     const billId = uuidv4();
         console.log('\n1. Inserting Bill:', {
             bill_id: billId,
@@ -113,7 +111,7 @@ const saveBill = async (req, res) => {
     );
         console.log('✅ Bill inserted successfully');
 
-    // 2. Save to items table
+    
         console.log('\n2. Processing Items for Insertion:');
         const itemInserts = [];
         for (const item of billData.items) {
@@ -124,7 +122,7 @@ const saveBill = async (req, res) => {
                 who_to_paid: item.who_to_paid
             });
 
-            // Calculate nominal per person
+            
       const nominalPerPerson = item.who_to_paid.length > 0 ? item.nominal / item.who_to_paid.length : item.nominal;
             const roundedItemPrice = Math.round(nominalPerPerson);
             
@@ -135,7 +133,7 @@ const saveBill = async (req, res) => {
                 rounded_price: roundedItemPrice
             });
 
-            // Create an entry for each user who needs to pay
+            
             for (const userId of item.who_to_paid) {
                 const itemId = uuidv4();
                 itemInserts.push([
@@ -173,7 +171,7 @@ const saveBill = async (req, res) => {
         await connection.commit();
         console.log('\n✅ Transaction committed successfully');
 
-        // Send success response
+        
         res.status(201).json({ 
             billId, 
             message: 'Bill and items saved successfully',
@@ -216,7 +214,7 @@ const getBillsByGroup = async (groupId) => {
       [groupId]
     );
 
-    // Get items for each bill
+    
     for (let bill of bills) {
       const [items] = await connection.execute(
         `SELECT i.*, u.username as paid_by_name
@@ -239,7 +237,7 @@ const summarizeBills = async (groupId) => {
     try {
         await connection.beginTransaction();
 
-        // Get all unsummarized bills for this group
+        
         const [unsummarizedBills] = await connection.execute(
             `SELECT b.*, u.username as paid_by_name, 
                 (SELECT COUNT(*) FROM items WHERE bill_id = b.bill_id) as item_count,
@@ -251,7 +249,7 @@ const summarizeBills = async (groupId) => {
             [groupId]
         );
 
-        // Get items for each bill
+        
         for (let bill of unsummarizedBills) {
             const [items] = await connection.execute(
                 `SELECT i.*, u.username as paid_by_name
@@ -263,16 +261,16 @@ const summarizeBills = async (groupId) => {
             bill.items = items;
         }
 
-        // Convert bills to Bill instances with Item instances
+        
         const formattedBills = unsummarizedBills.map(bill => {
             const billInstance = new Bill();
             
-            // Add each item to the bill
+            
             bill.items.forEach(item => {
                 const itemInstance = new Item(
-                    item.item_price,  // nominal
-                    [item.to_be_paid_by],  // who_to_paid
-                    bill.paid_by  // paid_by
+                    item.item_price,  
+                    [item.to_be_paid_by],  
+                    bill.paid_by  
                 );
                 billInstance.addItem(itemInstance);
             });
@@ -280,12 +278,12 @@ const summarizeBills = async (groupId) => {
             return billInstance;
         });
 
-        // Use the existing summarize function
+        
         const records = await summarize(formattedBills, groupId);
 
         await connection.commit();
 
-        // Return summary for frontend display
+        
         return {
             group_id: groupId,
             total_bills: unsummarizedBills.length,
@@ -308,7 +306,7 @@ async function testSummarizeBills(groupId) {
     console.log('Group ID:', groupId);
     
     try {
-        // Get all unsummarized bills for the group
+        
         console.log('\n1. Fetching unsummarized bills...');
         const [unsummarizedBills] = await pool.query(
             `SELECT b.*, u.username as paid_by_name, 
@@ -329,7 +327,7 @@ async function testSummarizeBills(groupId) {
             throw new Error('No unsummarized bills found for this group');
         }
 
-        // Get items for each bill
+        
         console.log('\n2. Fetching items for each bill...');
         for (let bill of unsummarizedBills) {
             console.log(`\nProcessing bill ${bill.bill_id}:`);
@@ -350,13 +348,13 @@ async function testSummarizeBills(groupId) {
             console.log('Items data:', JSON.stringify(items, null, 2));
         }
 
-        // Convert bills to Bill instances with Item instances
+        
         console.log('\n3. Converting bills to Bill instances...');
         const formattedBills = unsummarizedBills.map(bill => {
             console.log(`\nConverting bill ${bill.bill_id}:`);
             const billInstance = new Bill();
             
-            // Add each item to the bill
+            
             bill.items.forEach(item => {
                 console.log(`Processing item:`, {
                     item_price: item.item_price,
@@ -365,9 +363,9 @@ async function testSummarizeBills(groupId) {
                 });
                 
                 const itemInstance = new Item(
-                    item.item_price,  // nominal
-                    [item.to_be_paid_by],  // who_to_paid
-                    bill.paid_by  // paid_by
+                    item.item_price,  
+                    [item.to_be_paid_by],  
+                    bill.paid_by  
                 );
                 billInstance.addItem(itemInstance);
             });
@@ -376,7 +374,7 @@ async function testSummarizeBills(groupId) {
         });
 
         console.log('\n4. Calling summarize function...');
-        // Use the summarize function to get the records
+        
         const records = await summarize(formattedBills, groupId);
         console.log('\nSummarize function returned records:', JSON.stringify(records, null, 2));
 
@@ -402,25 +400,25 @@ async function testSummarizeBills(groupId) {
     }
 }
 
-// Function to delete a bill by ID
+
 const deleteBill = async (billId) => {
     try {
-        // Start a transaction
+        
         await pool.query('BEGIN');
 
-        // Delete associated items first
+        
         await pool.query('DELETE FROM items WHERE bill_id = ?', [billId]);
 
-        // Delete the bill
+        
         const result = await pool.query('DELETE FROM bills WHERE bill_id = ?', [billId]);
 
-        // Check if any rows were affected
+        
         if (result[0].affectedRows === 0) {
             await pool.query('ROLLBACK');
             throw new Error('Bill not found');
         }
 
-        // Commit the transaction
+        
         await pool.query('COMMIT');
 
         return { message: 'Bill deleted successfully' };
@@ -430,95 +428,95 @@ const deleteBill = async (billId) => {
     }
 };
 
-// New function to handle GET bills by group (logic moved from route handler)
+
 const handleGetBillsByGroup = async (req, res) => {
     console.log('=== Get Bills by Group Request Service ===');
     try {
-        const bills = await getBillsByGroup(req.params.groupId); // Call the existing getBillsByGroup data fetching function
-        res.json(bills); // Send response from service
+        const bills = await getBillsByGroup(req.params.groupId); 
+        res.json(bills); 
     } catch (error) {
         console.error('Error in handleGetBillsByGroup service:', error);
-        res.status(500).json({ error: 'Failed to get bills' }); // Send error response from service
+        res.status(500).json({ error: 'Failed to get bills' }); 
     }
 };
 
-// New function to handle GET bills (logic moved from route handler)
+
 const handleGetBills = async (req, res) => {
     console.log('=== Get Bills Request Service ===');
     try {
-        // For now, just return a message
-        res.json({ message: 'GET /bills endpoint is working' }); // Send response from service
+        
+        res.json({ message: 'GET /bills endpoint is working' }); 
     } catch (error) {
         console.error('Error in handleGetBills service:', error);
-        res.status(500).json({ error: 'Failed to get bills' }); // Send error response from service
+        res.status(500).json({ error: 'Failed to get bills' }); 
     }
 };
 
-// New function to handle POST summarize bills (logic moved from route handler)
+
 const handleSummarizeBills = async (req, res) => {
     console.log('=== Summarize Bills Request Service ===');
     try {
         const { groupId } = req.params;
         
-        // Validate groupId
+        
         if (!groupId) {
             return res.status(400).json({ error: 'Group ID is required' });
         }
 
-        // Get all bills for the group (call existing data fetching function)
+        
         const bills = await getBillsByGroup(groupId);
         
         if (!bills || bills.length === 0) {
             return res.status(404).json({ error: 'No bills found for this group' });
         }
 
-        // Summarize the bills (call existing summarization logic)
-        const summary = await summarizeBills(groupId); // summarizeBills now handles data fetching inside
+        
+        const summary = await summarizeBills(groupId); 
         
         console.log('Bills summarized successfully in service:', summary);
-        res.json(summary); // Send response from service
+        res.json(summary); 
     } catch (error) {
         console.error('Error in handleSummarizeBills service:', error);
         res.status(500).json({ 
             error: 'Failed to summarize bills',
             details: error.message
-        }); // Send error response from service
+        }); 
     }
 };
 
-// New function to handle GET test summarize bills (logic moved from route handler)
+
 const handleTestSummarizeBills = async (req, res) => {
     console.log('=== Test Summarize Bills Request Service ===');
     try {
         const { groupId } = req.params;
         
-        // Validate groupId
+        
         if (!groupId) {
             return res.status(400).json({ error: 'Group ID is required' });
         }
 
-        // Use the existing test summarize bills function
+        
         const summary = await testSummarizeBills(groupId);
-        res.json(summary); // Send response from service
+        res.json(summary); 
 
     } catch (error) {
         console.error('Error in handleTestSummarizeBills service:', error);
         res.status(500).json({ 
             error: 'Failed to test summarize bills',
             details: error.message
-        }); // Send error response from service
+        }); 
     }
 };
 
-// New function to handle DELETE test delete bills (logic moved from route handler)
+
 const handleTestDeleteBills = async (req, res) => {
     console.log('=== Test Delete Bill Request Service (Bypassing Auth) ===');
     console.log('Attempting to delete bill with ID:', req.params.billId);
-    // Call the actual delete service function (it handles the response)
+    
     await deleteBill(req.params.billId);
 };
 
-// New function to handle GET a single bill by ID
+
 const handleGetBillById = async (req, res) => {
     console.log('=== Get Bill by ID Request Service ===');
     console.log('Request params:', req.params);
@@ -547,7 +545,7 @@ const handleGetBillById = async (req, res) => {
     }
 };
 
-// New function to handle PUT (update) a bill by ID
+
 const handleUpdateBill = async (req, res) => {
     console.log('=== Update Bill Request Service ===');
     try {
@@ -569,19 +567,19 @@ const createBill = async (billData) => {
   try {
     await connection.beginTransaction();
 
-    // Generate a UUID for the bill
+    
     const billId = uuidv4();
 
-    // Insert the bill
+    
     const [billResult] = await connection.execute(
       `INSERT INTO bills (bill_id, group_id, paid_by, bill_picture, date_created) 
        VALUES (?, ?, ?, ?, ?)`,
       [billId, group_id, paid_by, bill_picture, date_created || new Date()]
     );
 
-    // Insert bill items
+    
     for (const item of items) {
-      const itemId = uuidv4(); // Generate UUID for each item
+      const itemId = uuidv4(); 
       await connection.execute(
         `INSERT INTO items (item_id, bill_id, to_be_paid_by, item_name, item_price, already_paid) 
          VALUES (?, ?, ?, ?, ?, ?)`,
@@ -605,7 +603,7 @@ const getBillById = async (billId) => {
     console.log('=== Getting Bill by ID ===');
     console.log('Bill ID:', billId);
 
-    // Get bill details
+    
     const [bills] = await connection.execute(
       `SELECT b.*, u.username as paid_by_name,
         (SELECT COUNT(*) FROM items WHERE bill_id = b.bill_id) as item_count,
@@ -635,7 +633,7 @@ const getBillById = async (billId) => {
       total_amount: bill.total_amount
     });
 
-    // Get items for the bill with usernames and who_to_paid information
+    
     const [items] = await connection.execute(
       `SELECT i.*, 
         GROUP_CONCAT(DISTINCT u.username) as to_be_paid_by_names,
@@ -649,7 +647,7 @@ const getBillById = async (billId) => {
 
     console.log('Raw items data from database:', items);
 
-    // Process items to ensure correct data types and split the concatenated values
+    
     const processedItems = items.map(item => ({
       ...item,
       item_price: Number(item.item_price) || 0,
@@ -660,7 +658,7 @@ const getBillById = async (billId) => {
 
     console.log('Processed items:', processedItems);
 
-    // Add items to bill object
+    
     bill.items = processedItems;
 
     console.log('Final bill object being returned:', {
@@ -684,10 +682,10 @@ const getBillById = async (billId) => {
   }
 };
 
-// Get bill image
+
 const getBillImage = async (billId) => {
   try {
-    // Get bill image path from database
+    
     const [bills] = await pool.query(
       'SELECT bill_picture FROM bills WHERE bill_id = ?',
       [billId]
@@ -699,19 +697,19 @@ const getBillImage = async (billId) => {
 
     const bill = bills[0];
     
-    // Read the image file
+    
     const imagePath = path.join(__dirname, '..', bill.bill_picture);
     
-    // Check if file exists
+    
     if (!fs.existsSync(imagePath)) {
       throw new Error('Bill image not found');
     }
 
-    // Read file and convert to base64
+    
     const imageBuffer = fs.readFileSync(imagePath);
     const base64Image = imageBuffer.toString('base64');
     
-    // Get file extension to determine content type
+    
     const ext = path.extname(imagePath).toLowerCase();
     const contentType = {
       '.jpg': 'image/jpeg',
@@ -727,10 +725,10 @@ const getBillImage = async (billId) => {
   }
 };
 
-// Get bill debug info
+
 const getBillDebugInfo = async (billId) => {
   try {
-    // Get bill details from database
+    
     const [bills] = await pool.query(
       'SELECT * FROM bills WHERE bill_id = ?',
       [billId]
@@ -742,7 +740,7 @@ const getBillDebugInfo = async (billId) => {
 
     const bill = bills[0];
     
-    // Check if image file exists
+    
     const imagePath = path.join(__dirname, '..', bill.bill_picture);
     const fileExists = fs.existsSync(imagePath);
 
@@ -759,10 +757,10 @@ const getBillDebugInfo = async (billId) => {
   }
 };
 
-// Check bill status
+
 const checkBillStatus = async (billId) => {
   try {
-    // Check if bill exists and get its image path
+    
     const [bills] = await pool.query(
       'SELECT bill_id, bill_picture, date_created FROM bills WHERE bill_id = ?',
       [billId]
@@ -774,18 +772,18 @@ const checkBillStatus = async (billId) => {
 
     const bill = bills[0];
 
-    // Check if bill_picture is null or empty
+    
     if (!bill.bill_picture) {
       throw new Error('Bill has no image path in database');
     }
 
-    // Check if uploads directory exists
+    
     const uploadsDir = path.join(__dirname, '..', 'uploads');
     const billsDir = path.join(uploadsDir, 'bills');
     const uploadsExists = fs.existsSync(uploadsDir);
     const billsDirExists = fs.existsSync(billsDir);
 
-    // Check if image file exists
+    
     const imagePath = path.join(__dirname, '..', bill.bill_picture);
     const fileExists = fs.existsSync(imagePath);
 
@@ -810,7 +808,7 @@ const checkBillStatus = async (billId) => {
   }
 };
 
-// Handle file upload
+
 const handleFileUpload = async (file) => {
   if (!file) {
     throw new Error('No file uploaded');
@@ -821,16 +819,16 @@ const handleFileUpload = async (file) => {
   };
 };
 
-// Handle bill creation with file
+
 const handleBillCreation = async (req) => {
   const { group_id, paid_by, items, date_created } = req.body;
   
-  // Validate required fields
+  
   if (!group_id || !paid_by || !items || !Array.isArray(items) || items.length === 0) {
     throw new Error('Missing required fields');
   }
 
-  // Get bill picture path - either from uploaded file or from request body
+  
   let billPicturePath;
   if (req.file) {
     billPicturePath = `/uploads/bills/${req.file.filename}`;
@@ -851,10 +849,10 @@ const handleBillCreation = async (req) => {
   return await createBill(billData);
 };
 
-// Handle bill deletion with file
+
 const handleBillDeletion = async (billId) => {
     try {
-        // Get bill image path before deleting
+        
         const [bills] = await pool.query(
             'SELECT bill_picture FROM bills WHERE bill_id = ?',
             [billId]
@@ -866,10 +864,10 @@ const handleBillDeletion = async (billId) => {
 
         const bill = bills[0];
 
-        // Delete the bill from database
+        
         await deleteBill(billId);
 
-        // Delete the image file if it exists
+        
         if (bill.bill_picture) {
             const imagePath = path.join(__dirname, '..', bill.bill_picture);
             if (fs.existsSync(imagePath)) {
@@ -883,18 +881,18 @@ const handleBillDeletion = async (billId) => {
   }
 };
 
-// New handler for GET summarize bills
+
 const handleGetSummarizeBills = async (req, res) => {
   console.log('=== Get Summarized Bills Request Service ===');
   try {
     const { groupId } = req.params;
 
-    // Validate groupId
+    
     if (!groupId) {
       return res.status(400).json({ error: 'Group ID is required' });
     }
 
-    // Get the latest invoice for bills in this group
+    
     const [invoices] = await pool.query(
       `SELECT i.* 
        FROM invoice i
@@ -916,7 +914,7 @@ const handleGetSummarizeBills = async (req, res) => {
 
     const latestInvoice = invoices[0];
 
-    // Get records for this invoice with usernames
+    
     const [records] = await pool.query(
       `SELECT r.*, 
         u1.username as debtor_name,
@@ -928,7 +926,7 @@ const handleGetSummarizeBills = async (req, res) => {
       [latestInvoice.invoice_id]
     );
 
-    // Calculate total amount
+    
     const totalAmount = records.reduce((sum, record) => sum + Number(record.nominal), 0);
 
     console.log('Summarized data fetched successfully:', {
@@ -938,7 +936,7 @@ const handleGetSummarizeBills = async (req, res) => {
       totalAmount
     });
 
-    // Return the fetched invoice and records
+    
     res.json({
       groupId: groupId,
       invoice: latestInvoice,
@@ -973,7 +971,7 @@ module.exports = {
   handleBillDeletion,
   upload,
   
-  // Export new handlers for routes
+  
   handleGetBillsByGroup,
   handleGetBills,
   handleSummarizeBills,

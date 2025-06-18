@@ -3,13 +3,12 @@ const router = express.Router();
 const pool = require('../db');
 const authMiddleware = require('../auth/authMiddleware');
 
-// GET /invoices/group/:groupId
 router.get('/invoices/group/:groupId', authMiddleware, async (req, res) => {
     console.log('=== Get Invoices by Group Request ===');
     try {
         const { groupId } = req.params;
 
-        // Get all invoices for the group based on bill date ranges
+    
         const [invoices] = await pool.query(
             `SELECT i.*, 
                 (SELECT COUNT(*) FROM record WHERE invoice_id = i.invoice_id) as record_count,
@@ -24,7 +23,7 @@ router.get('/invoices/group/:groupId', authMiddleware, async (req, res) => {
             [groupId]
         );
 
-        // Get records for each invoice
+    
         for (let invoice of invoices) {
             const [records] = await pool.query(
                 `SELECT r.*, 
@@ -46,14 +45,13 @@ router.get('/invoices/group/:groupId', authMiddleware, async (req, res) => {
     }
 });
 
-// PATCH /invoices/:invoiceId/records/:recordId
 router.patch('/invoices/:invoiceId/records/:recordId', authMiddleware, async (req, res) => {
     console.log('=== Update Record Payment Status Request ===');
     try {
         const { invoiceId, recordId } = req.params;
         const { is_paid } = req.body;
 
-        // Update the record's payment status
+    
         await pool.query(
             'UPDATE record SET already_paid = ? WHERE invoice_id = ? AND record_id = ?',
             [is_paid, invoiceId, recordId]

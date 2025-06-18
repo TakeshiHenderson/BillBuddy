@@ -1,6 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Initialize Gemini API
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 exports.processBillText = async (text) => {
@@ -46,8 +46,8 @@ exports.processBillText = async (text) => {
 
         Respond with ONLY the JSON object, no other text.`;
 
-    const maxRetries = 3; // Number of retry attempts
-    const retryDelay = 1000; // Delay in milliseconds between retries
+    const maxRetries = 3; 
+    const retryDelay = 1000; 
     let response = null;
 
     for (let i = 0; i < maxRetries; i++) {
@@ -60,7 +60,7 @@ exports.processBillText = async (text) => {
 
             if (response && response.trim() !== '') {
                 console.log('✅ Valid response received.');
-                break; // Exit loop if response is valid
+                break; 
             } else {
                 console.warn('⚠️ Received empty or invalid response from Gemini. Retrying...');
             }
@@ -76,7 +76,7 @@ exports.processBillText = async (text) => {
         }
     }
 
-    // If response is still empty after retries, throw an error
+    
     if (!response || response.trim() === '') {
         console.error('\n=== Error: Final Empty Response After Retries ===');
         console.error('Gemini returned empty response after all retry attempts.');
@@ -86,14 +86,14 @@ exports.processBillText = async (text) => {
         };
     }
 
-    // Parse the JSON response
+    
     try {
         console.log('\n=== Processing Response ===');
-        // Clean the response to ensure it's valid JSON
+        
         const cleanedResponse = response.trim().replace(/^```json\n?|\n?```$/g, '');
         console.log('Cleaned Response:', cleanedResponse);
         
-        // If cleaned response is empty, return error
+        
         if (!cleanedResponse || cleanedResponse.trim() === '') {
             console.error('\n=== Error: Empty Cleaned Response After Cleaning ===');
             console.error('Response was empty after cleaning.');
@@ -103,33 +103,25 @@ exports.processBillText = async (text) => {
             };
         }
         
-        // Try to fix incomplete JSON
         let fixedResponse = cleanedResponse;
         
-        // If the response is incomplete, try to fix it
         if (!cleanedResponse.endsWith('}')) {
             console.log('\n=== Fixing Incomplete Response ===');
-            // If we have items but they're incomplete
             if (cleanedResponse.includes('"items": [')) {
-                // If the items array is incomplete
                 if (!cleanedResponse.includes(']')) {
                     console.log('Items array is incomplete, finding last complete item...');
-                    // Find the last complete item
                     const lastCompleteItem = cleanedResponse.match(/\{[^}]*\}/g);
                     if (lastCompleteItem) {
                         console.log('Found complete items:', lastCompleteItem);
-                        // Reconstruct the JSON with the last complete item
                         fixedResponse = cleanedResponse.substring(0, cleanedResponse.lastIndexOf(lastCompleteItem[lastCompleteItem.length - 1]) + lastCompleteItem[lastCompleteItem.length - 1].length) + ']';
                     }
                 }
-                // Add the closing brackets and default values
                 fixedResponse = fixedResponse + ', "tax": 0, "service": 0, "discount": 0}';
             }
         }
 
         console.log('Fixed Response:', fixedResponse);
         
-        // Validate JSON structure before parsing
         if (!fixedResponse.startsWith('{') || !fixedResponse.endsWith('}')) {
             throw new Error('Invalid JSON structure after fixing');
         }
@@ -137,12 +129,10 @@ exports.processBillText = async (text) => {
         const parsedResponse = JSON.parse(fixedResponse);
         console.log('Parsed Response:', parsedResponse);
 
-        // Validate the parsed data
         if (!parsedResponse.items || !Array.isArray(parsedResponse.items)) {
             throw new Error('Response does not contain valid items array after parsing');
         }
 
-        // Validate each item
         const validatedItems = parsedResponse.items.filter(item => {
             const isValid = (
                 typeof item === 'object' &&
@@ -162,7 +152,6 @@ exports.processBillText = async (text) => {
             throw new Error('No valid items found in response after validation');
         }
 
-        // Ensure tax, service, and discount are numbers
         const validatedResponse = {
             items: validatedItems,
             tax: Number(parsedResponse.tax) || 0,
@@ -182,7 +171,6 @@ exports.processBillText = async (text) => {
         console.error('Parse/Validation Error:', parseError);
         console.error('Raw Response received before parsing:', response);
         
-        // Use fallback parsing if available
         console.log('\n=== Attempting Fallback Parsing ===');
         const items = [];
         const lines = text.split('\n');

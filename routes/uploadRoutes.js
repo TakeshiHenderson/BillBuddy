@@ -4,18 +4,15 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Configure multer for image upload
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(__dirname, '../uploads/bills');
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    // Generate unique filename with timestamp
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, 'bill-' + uniqueSuffix + path.extname(file.originalname));
   }
@@ -27,7 +24,6 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
   fileFilter: function (req, file, cb) {
-    // Accept only image files
     if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
       return cb(new Error('Only image files are allowed!'), false);
     }
@@ -35,7 +31,6 @@ const upload = multer({
   }
 });
 
-// Upload endpoint
 router.post('/upload', upload.single('image'), (req, res) => {
   try {
     if (!req.file) {
@@ -45,7 +40,6 @@ router.post('/upload', upload.single('image'), (req, res) => {
       });
     }
 
-    // Return the relative path to the uploaded file
     const filePath = `/uploads/bills/${req.file.filename}`;
     res.json({ 
       filePath,

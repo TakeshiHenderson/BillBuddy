@@ -10,16 +10,16 @@ const passport = require('./passport');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 
-// Configure chai to use chai-http
+
 chai.use(chaiHttp);
 
 describe('BillBuddy API Tests', () => {
-    let groupId; // Declare groupId at describe scope
-    let userIds; // Declare userIds at describe scope
+    let groupId; 
+    let userIds; 
 
-    // Clean up database before tests
+    
     before(async () => {
-        // Clean up existing test data
+        
         await pool.query('DELETE FROM record');
         await pool.query('DELETE FROM invoice');
         await pool.query('DELETE FROM items');
@@ -28,7 +28,7 @@ describe('BillBuddy API Tests', () => {
         await pool.query('DELETE FROM groups');
         await pool.query('DELETE FROM users WHERE email LIKE "test%@example.com"');
 
-        // Insert test users
+        
         userIds = {
             A: uuidv4(),
             B: uuidv4(),
@@ -43,14 +43,14 @@ describe('BillBuddy API Tests', () => {
             );
         }
 
-        // Insert test group
+        
         groupId = bills[0].group_id;
         await pool.query(
             'INSERT INTO groups (group_id, group_name) VALUES (?, ?)',
             [groupId, 'Test Group']
         );
 
-        // Add users to group
+        
         for (const userId of Object.values(userIds)) {
             await pool.query(
                 'INSERT INTO user_groups (group_id, user_id) VALUES (?, ?)',
@@ -59,15 +59,15 @@ describe('BillBuddy API Tests', () => {
         }
     });
 
-    // Clean up and insert test bills before each test
+    
     beforeEach(async () => {
-        // Clean up previous test data
+        
         await pool.query('DELETE FROM record');
         await pool.query('DELETE FROM invoice');
         await pool.query('DELETE FROM items');
         await pool.query('DELETE FROM bills');
 
-        // Insert test bills
+        
         for (const bill of bills) {
             const billId = uuidv4();
             await pool.query(
@@ -104,17 +104,17 @@ describe('BillBuddy API Tests', () => {
             password: 'testPassword123'
         };
 
-        // Assuming a test user is registered and logged in before these tests
-        let authToken; // To store the token for authenticated requests
-        let testUserId; // To store the test user's ID
+        
+        let authToken; 
+        let testUserId; 
 
         before(async () => {
-            // Ensure the test user exists and get their ID
+            
             const [users] = await pool.query('SELECT user_id FROM users WHERE email = ?', [testUser.email]);
             if (users.length > 0) {
                 testUserId = users[0].user_id;
             } else {
-                // If user doesn't exist, register them
+                
                 await chai.request(app)
                     .post('/auth/register')
                     .send(testUser);
@@ -122,7 +122,7 @@ describe('BillBuddy API Tests', () => {
                 testUserId = newUsers[0].user_id;
             }
 
-            // Log in the test user to get a token
+            
             const res = await chai.request(app)
                 .post('/auth/login')
                 .send(testUser);
@@ -138,7 +138,7 @@ describe('BillBuddy API Tests', () => {
                 expect(res).to.have.status(201);
                 expect(res.body).to.have.property('message', 'User registered successfully');
 
-                // Verify user was created in database
+                
                 const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [testUser.email]);
                 expect(users).to.have.lengthOf(1);
                 expect(users[0].email).to.equal(testUser.email);
@@ -207,20 +207,20 @@ describe('BillBuddy API Tests', () => {
             });
         });
 
-        // New tests for Group Functionality
+        
         describe('Group Functionality', () => {
-            let testGroupId; // To store the ID of a created test group
+            let testGroupId; 
 
-            // Clean up test groups and user_groups after these tests
+            
             after(async () => {
                 await pool.query('DELETE FROM user_groups WHERE user_id = ?', [testUserId]);
-                // Optional: Clean up groups created during tests if they are not linked to other users
-                // await pool.query('DELETE FROM groups WHERE group_id = ?', [testGroupId]);
+                
+                
             });
 
-            // Ensure a group exists before running tests that require one
+            
             beforeEach(async () => {
-                // Create a test group if it doesn't exist
+                
                 if (!testGroupId) {
                     const groupName = 'Temporary Test Group';
                     const res = await chai.request(app)
@@ -245,15 +245,15 @@ describe('BillBuddy API Tests', () => {
                     expect(res.body.group).to.have.property('group_id').to.be.a('string');
                     expect(res.body.group).to.have.property('group_name', groupName);
 
-                    // Store the created group ID for later tests
+                    
                     testGroupId = res.body.group.group_id;
 
-                    // Verify group was created in database
+                    
                     const [groups] = await pool.query('SELECT * FROM groups WHERE group_id = ?', [testGroupId]);
                     expect(groups).to.have.lengthOf(1);
                     expect(groups[0].group_name).to.equal(groupName);
 
-                    // Verify user_group entry was created
+                    
                     const [userGroups] = await pool.query('SELECT * FROM user_groups WHERE group_id = ? AND user_id = ?', [testGroupId, testUserId]);
                     expect(userGroups).to.have.lengthOf(1);
                 });
@@ -271,7 +271,7 @@ describe('BillBuddy API Tests', () => {
                     const res = await chai.request(app)
                         .post('/auth/groups')
                         .set('Authorization', `Bearer ${authToken}`)
-                        .send({}); // Missing groupName
+                        .send({}); 
 
                     expect(res).to.have.status(400);
                     expect(res.body).to.have.property('message', 'Group name is required');
@@ -286,7 +286,7 @@ describe('BillBuddy API Tests', () => {
 
                     expect(res).to.have.status(200);
                     expect(res.body).to.be.an('array');
-                    // Check if the created test group is in the list
+                    
                     const createdGroup = res.body.find(group => group.group_id === testGroupId);
                     expect(createdGroup).to.exist;
                     expect(createdGroup).to.have.property('group_name', 'Temporary Test Group');
@@ -311,13 +311,13 @@ describe('BillBuddy API Tests', () => {
                     expect(res.body).to.have.property('group_id', testGroupId);
                     expect(res.body).to.have.property('group_name', 'Temporary Test Group');
                     expect(res.body).to.have.property('members').to.be.an('array');
-                    // Check if the current user is in the members list
+                    
                     const currentUserMember = res.body.members.find(member => member.id === testUserId);
                     expect(currentUserMember).to.exist;
                 });
 
                 it('should not get a specific group by ID for a non-member', async () => {
-                    // Create another user who is not a member of testGroupId
+                    
                     const anotherUser = {
                          email: 'anotheruser@example.com',
                          password: 'anotherPassword123'
@@ -330,11 +330,11 @@ describe('BillBuddy API Tests', () => {
                         .get(`/auth/groups/${testGroupId}`)
                         .set('Authorization', `Bearer ${anotherAuthToken}`);
 
-                    expect(res).to.have.status(404); // Or 403 depending on desired behavior for non-members
+                    expect(res).to.have.status(404); 
                     expect(res.body).to.have.property('message');
 
-                    // Clean up the extra user
-                    // Note: Deleting user might require a backend endpoint or manual cleanup
+                    
+                    
                     const [anotherUserRow] = await pool.query('SELECT user_id FROM users WHERE email = ?', [anotherUser.email]);
                     if (anotherUserRow.length > 0) {
                         await pool.query('DELETE FROM users WHERE user_id = ?', [anotherUserRow[0].user_id]);
@@ -349,7 +349,7 @@ describe('BillBuddy API Tests', () => {
                 });
 
                  it('should return 404 for a non-existent group ID', async () => {
-                    const nonExistentGroupId = '00000000-0000-0000-0000-000000000000'; // Example non-existent UUID
+                    const nonExistentGroupId = '00000000-0000-0000-0000-000000000000'; 
                     const res = await chai.request(app)
                         .get(`/auth/groups/${nonExistentGroupId}`)
                         .set('Authorization', `Bearer ${authToken}`);
@@ -359,13 +359,13 @@ describe('BillBuddy API Tests', () => {
                  });
             });
 
-            // New tests for Joining Group Functionality
+            
             describe('POST /auth/groups/:groupId/join', () => {
-                let anotherUserId; // To store the ID of another test user
-                let anotherAuthToken; // To store the token for another test user
+                let anotherUserId; 
+                let anotherAuthToken; 
 
                 before(async () => {
-                    // Create and login another user who is not yet a member of testGroupId
+                    
                     const anotherUser = {
                          email: 'joinuser@example.com',
                          password: 'joinPassword123'
@@ -379,7 +379,7 @@ describe('BillBuddy API Tests', () => {
                 });
 
                 after(async () => {
-                    // Clean up the user_group entry and the extra user after tests
+                    
                     await pool.query('DELETE FROM user_groups WHERE user_id = ? AND group_id = ?', [anotherUserId, testGroupId]);
                     await pool.query('DELETE FROM users WHERE user_id = ?', [anotherUserId]);
                 });
@@ -392,13 +392,13 @@ describe('BillBuddy API Tests', () => {
                     expect(res).to.have.status(200);
                     expect(res.body).to.have.property('message', 'Successfully joined the group');
 
-                    // Verify user_group entry was created
+                    
                     const [userGroups] = await pool.query('SELECT * FROM user_groups WHERE group_id = ? AND user_id = ?', [testGroupId, anotherUserId]);
                     expect(userGroups).to.have.lengthOf(1);
                 });
 
                 it('should not allow an authenticated user to join a group they are already a member of', async () => {
-                    // First, ensure the user is a member (from the previous test or explicitly add them)
+                    
                      await pool.query('INSERT INTO user_groups (group_id, user_id) VALUES (?, ?)', [testGroupId, anotherUserId]);
 
                     const res = await chai.request(app)
@@ -494,7 +494,7 @@ describe('BillBuddy API Tests', () => {
         });
 
         it('should handle bills with tax, service, and discount with proper rounding and insert into database', async () => {
-            // Clean up and insert bills with fees
+
             await pool.query('DELETE FROM items');
             await pool.query('DELETE FROM bills');
             

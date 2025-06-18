@@ -3,17 +3,15 @@ const pool = require('../db');
 
 module.exports = async (req, res, next) => {
     try {
-        // Get token from header
         const token = req.header('Authorization')?.replace('Bearer ', '');
         
         if (!token) {
             return res.status(401).json({ message: 'No token, authorization denied' });
         }
 
-        // Verify token
+
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        // Check if user still exists
         const [user] = await pool.query(
             'SELECT user_id, username, email FROM users WHERE user_id = ?',
             [decoded.user_id]
@@ -23,7 +21,6 @@ module.exports = async (req, res, next) => {
             return res.status(401).json({ message: 'User no longer exists' });
         }
 
-        // Add user info to request
         req.user = {
             user_id: decoded.user_id,
             username: decoded.username,
